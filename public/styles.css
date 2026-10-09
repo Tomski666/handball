@@ -31,7 +31,7 @@ body {
   color: var(--text);
   background: var(--grau);
   line-height: 1.5;
-  font-size: 16px;
+  font-size: 17px;
 }
 a { color: var(--blau); }
 img { max-width: 100%; display: block; }
@@ -61,23 +61,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .nav a:hover { background: rgba(255, 255, 255, .12); }
 .nav a.aktiv { color: #1b2a36; }
-.menue-knopf {
-  display: none; margin-left: auto; background: none; border: 0; color: var(--weiss);
-  padding: 8px; cursor: pointer;
-}
-.menue-knopf svg { width: 28px; height: 28px; }
-
-@media (max-width: 1020px) {
-  .menue-knopf { display: block; }
-  .nav {
-    display: none; position: absolute; left: 0; right: 0; top: 100%;
-    background: var(--blau); flex-direction: column; padding: 8px 16px 16px;
-    box-shadow: 0 8px 16px rgba(0, 0, 0, .15);
-  }
-  .nav.offen { display: flex; }
-  .nav a { padding: 12px 8px; font-size: 15px; border-bottom: 1px solid rgba(255, 255, 255, .12); }
-}
-
 /* ---------- Seitenaufbau ---------- */
 main { max-width: 1180px; margin: 0 auto; padding: 28px 16px 64px; min-height: 70vh; }
 .unterzeile { font-size: 15px; text-transform: uppercase; font-weight: 400; letter-spacing: .02em; margin: 0; color: var(--text); }
@@ -289,3 +272,86 @@ form.mitbringen[hidden] { display: none; }
 li.fahrt { display: block; }
 .fahrt-kopf { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 6px; }
 form.mitfahren { margin-top: 8px; max-width: 420px; }
+
+/* ---------- Feinschliff: Begrüßung, Navigation unten, Startseite ---------- */
+.nav { order: 2; }
+.hallo {
+  order: 3; background: rgba(255,255,255,.14); color: #fff; border: 1px solid rgba(255,255,255,.4);
+  border-radius: 99px; padding: 7px 14px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; margin-left: 8px;
+}
+body.ohne-galerie .nav-galerie { display: none; }
+
+.unten-nav { display: none; }
+@media (max-width: 1100px) {
+  .nav { display: none; }
+  .hallo { margin-left: auto; }
+  .marke-text span { display: none; }
+  body { padding-bottom: calc(74px + env(safe-area-inset-bottom)); }
+  .unten-nav {
+    display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+    background: #fff; border-top: 1px solid var(--grau-linie); box-shadow: 0 -4px 16px rgba(0,0,0,.06);
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+  }
+  .unten-nav a, .unten-nav button {
+    display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; color: var(--text-leise);
+    text-decoration: none; font-size: 12px; font-weight: 600; background: none; border: 0; cursor: pointer; border-radius: 10px;
+  }
+  .unten-nav svg { width: 26px; height: 26px; }
+  .unten-nav .aktiv { color: var(--blau); background: var(--blau-hell); }
+  .toast { bottom: calc(90px + env(safe-area-inset-bottom)); }
+  .knopf { min-height: 44px; }
+  .knopf.klein { min-height: 36px; }
+}
+
+.dialog-box, .sheet { background: #fff; color: var(--text); border-radius: 16px; padding: 22px; width: 100%; max-width: 440px; max-height: 90vh; overflow-y: auto; }
+.dialog-box h2 { font-size: 22px; }
+.punkte-liste { padding-left: 20px; margin: 0 0 16px; }
+.punkte-liste li { margin-bottom: 6px; }
+.tipp { background: var(--blau-hell); border-radius: 10px; padding: 10px 12px; font-size: 15px; margin: 16px 0 0; }
+.schalter { display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 600; cursor: pointer; }
+.schalter input { width: 22px; height: 22px; }
+.sheet-hinter { justify-content: flex-end; padding: 0; background: rgba(10,18,26,.5); }
+.sheet { border-radius: 18px 18px 0 0; max-width: 560px; padding: 10px 10px calc(14px + env(safe-area-inset-bottom)); }
+.sheet a, .sheet button {
+  display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px 12px; font-size: 17px; font-weight: 600;
+  color: var(--text); text-decoration: none; background: none; border: 0; border-radius: 10px; cursor: pointer; text-align: left;
+}
+.sheet a:hover, .sheet button:hover { background: var(--blau-hell); }
+.sheet span { width: 28px; text-align: center; font-size: 20px; }
+
+.hero { border-top: 5px solid var(--blau); }
+.hero .spiel-titel { font-size: 19px; }
+.hero-status { margin-top: 14px; font-size: 17px; }
+.hero-status p { margin-bottom: 6px; }
+.gut { color: var(--gruen); font-weight: 700; }
+.hero-knoepfe { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); margin-top: 12px; }
+.hero-knoepfe .knopf { white-space: normal; min-width: 0; }
+.knopf.gross { font-size: 16px; padding: 14px 16px; text-transform: none; letter-spacing: 0; }
+a.termin { display: flex; gap: 12px; align-items: center; color: inherit; text-decoration: none; min-width: 0; }
+a.termin .datum-block { width: 52px; padding: 4px 0; }
+a.termin .datum-block .tg { font-size: 20px; }
+a.termin > span { display: flex; flex-direction: column; min-width: 0; }
+.kasse-gross { text-align: center; padding: 28px 20px; }
+.zahl-riesig { font-size: clamp(40px, 11vw, 60px); font-weight: 700; color: var(--blau); line-height: 1.1; }
+.zahl-riesig.minus { color: var(--rot); }
+
+.hero-knoepfe .knopf.zweit.gross { font-size: 15px; padding: 10px 12px; }
+@media (max-width: 900px) {
+  .kopf-innen { gap: 10px; }
+  .marke img { width: 46px; height: 46px; }
+  .marke-text strong { font-size: 14px; }
+  .hallo { max-width: 42vw; overflow: hidden; text-overflow: ellipsis; flex-shrink: 1; font-size: 13px; padding: 6px 12px; }
+  .hero-knoepfe { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .hero-knoepfe .knopf.gross:not(.zweit) { grid-column: 1 / -1; }
+  footer { display: none; }
+}
+h1 { hyphens: auto; -webkit-hyphens: auto; overflow-wrap: break-word; }
+@media (max-width: 400px) { h1 { font-size: 27px; } }
+input[type=file] { max-width: 100%; width: 100%; font-size: 15px; }
+.liste > li { flex-wrap: wrap; }
+.liste > li > .spiel { min-width: 0; flex: 1 1 220px; }
+
+@media (min-width: 1101px) {
+  .nav { flex-wrap: nowrap; }
+  .nav a { padding: 8px 7px; font-size: 12.5px; letter-spacing: .02em; }
+}

@@ -7,14 +7,14 @@ Hosting über GitHub und Netlify (Gratis-Tarif), Daten in Netlify Blobs. Kein Fr
 
 | Bereich | Wer darf was |
 |---|---|
-| Start | Übersicht: nächstes Spiel, nächstes Heimspiel-Catering, Kassenstand, wer die Trikots wäscht |
+| Start | „Was steht an?“ mit Ein-Klick-Knöpfen fürs nächste Heimspiel, „Meine Termine“ mit Kalender-Export, Fahrt, Kasse, Trikots |
 | Mannschaft | Text, Liga, Kader (nur Vornamen), Trainer, Trainingszeiten. Ändern nur Kasse |
 | Spiele | handball.net-Widget (Spielplan, Tabelle) und eigene Terminliste. Termine pflegt die Kasse |
 | Heimspiel-Catering | Pro Heimspiel Standdienst (Plätze begrenzt) und Mitbringliste. Alle Eltern tragen sich ein und entfernen nur ihre eigenen Einträge. 2 feste Plätze plus Reserve. Knopf „Text für WhatsApp“ |
 | Fahrten | Fahrgemeinschaften zu Auswärtsspielen: Plätze anbieten, Kinder eintragen, WhatsApp-Text |
 | Trikots | Waschplan reihum nach Kader, Tausch und „erledigt“ durch alle Eltern |
-| Kasse | Alle sehen Stand, Buchungen, Einnahmen nach Kanal, Ausgaben nach Zweck, CSV-Export, Ergebnis je Heimspiel. Buchen nur Kasse, inklusive „Heimspiel abrechnen“ mit fertigem WhatsApp-Text |
-| Galerie | Alle laden Fotos hoch (werden im Browser verkleinert, Standortdaten entfernt). Melden blendet ein Foto sofort aus, die Kasse gibt frei oder löscht |
+| Kasse | Eltern sehen zuerst nur Kassenstand und letzte Buchungen, Details auf Knopfdruck. Alle sehen Stand, Buchungen, Einnahmen nach Kanal, Ausgaben nach Zweck, CSV-Export, Ergebnis je Heimspiel. Buchen nur Kasse, inklusive „Heimspiel abrechnen“ mit fertigem WhatsApp-Text |
+| Galerie | Erst sichtbar, wenn die Kasse sie unter Verwaltung freigibt. Dann laden alle Fotos hoch (werden im Browser verkleinert, Standortdaten entfernt). Melden blendet ein Foto sofort aus, die Kasse gibt frei oder löscht |
 | Verwaltung | Nur Kasse: Kader, Trainer, Anfangsbestand, Mitbringliste, Kategorien, Widget-Token |
 
 Zwei Passwörter: Das **Eltern-Passwort** erlaubt Lesen und Eintragen. Das **Kassen-Passwort** (nur Tomski und Peggy) erlaubt zusätzlich Buchungen und Verwaltung.
@@ -62,3 +62,7 @@ netlify.toml            Konfiguration, noindex und Sicherheits-Header
 ## Als App auf dem Handy
 
 iPhone: Seite in Safari öffnen, Teilen, „Zum Home-Bildschirm“. Android: Chrome-Menü, „Zum Startbildschirm hinzufügen“ bzw. „App installieren“.
+
+## Bedienung für Eltern
+
+Beim ersten Besuch fragt die Seite einmal nach Vorname und Kind und zeigt einen Tipp, wie man sie als App ablegt. Auf dem Handy liegt die Navigation unten (Start, Catering, Fahrten, Kasse, Mehr). Name und Kind lassen sich über den Namen oben rechts oder „Mehr“ ändern.

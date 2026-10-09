@@ -70,6 +70,7 @@ const STANDARD_EINSTELLUNGEN = {
   ],
   standdienstPlaetze: 2,
   reservePlaetze: 1,
+  galerieAktiv: false,
   cateringArtikel: [
     { name: "Kuchen", bedarf: 2 },
     { name: "Muffins", bedarf: 2 },
@@ -290,6 +291,7 @@ export default async (request) => {
       for (const k of erlaubt) if (k in neu) zusammen[k] = neu[k];
       zusammen.anfangsbestand = Math.round(Number(zusammen.anfangsbestand)) || 0;
       zusammen.standdienstPlaetze = Math.min(10, Math.max(1, Number.parseInt(zusammen.standdienstPlaetze, 10) || 2));
+      zusammen.galerieAktiv = zusammen.galerieAktiv === true;
       zusammen.reservePlaetze = Math.min(5, Math.max(0, Number.parseInt(zusammen.reservePlaetze, 10) || 0));
       await store.setJSON("einstellungen", zusammen);
       return json(zusammen);
@@ -363,6 +365,7 @@ export default async (request) => {
       }
 
       if (methode === "POST" && !id) {
+        if (rolle !== "kasse" && !(await einstellungen(store)).galerieAktiv) return fehler("Die Galerie ist noch nicht freigegeben", 403);
         const form = await request.formData();
         const gross = form.get("gross");
         const klein = form.get("klein");

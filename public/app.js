@@ -8,6 +8,7 @@ let galerie = [];
 let galerieGeladen = false;
 let albumFilter = "Alle";
 let kassenFilter = "alle";
+let kassenDetails = false;
 
 function lokal(key, wert) {
   try {
@@ -22,10 +23,12 @@ if (!besitzer) {
   lokal("otv_besitzer", besitzer);
 }
 const gemerkterName = () => lokal("otv_name") || "";
+const meinVorname = () => lokal("otv_vorname") || (lokal("otv_name") || "").split(" (")[0];
+const meinKind = () => lokal("otv_kind") || "";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const euro = (cent) => (cent / 100).toLocaleString("de-DE", { style: "currency", currency: "EUR" });
-const heute = () => new Date().toISOString().slice(0, 10);
+const heute = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 const WT = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
 const MO = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
 const datum = (iso) => new Date(iso + "T12:00:00");
@@ -128,39 +131,117 @@ const SEITEN = {
   datenschutz: seiteDatenschutz,
 };
 
+function meineTermine() {
+  const t = [];
+  const spiel = (id) => Z.spiele.find((x) => x.id === id);
+  const kommt = (sp) => sp && sp.datum >= heute();
+  for (const d of Z.standdienst.filter((x) => x.eigen)) {
+    const sp = spiel(d.spielId);
+    if (kommt(sp)) t.push({ key: "s" + d.id, spiel: sp, text: d.reserve ? "Du bist Reserve beim Standdienst" : "Du hast Standdienst", link: "#/catering" });
+  }
+  for (const c of Z.catering.filter((x) => x.eigen)) {
+    const sp = spiel(c.spielId);
+    if (kommt(sp)) t.push({ key: "c" + c.id, spiel: sp, text: `Du bringst ${c.artikel} mit${c.menge ? ` (${c.menge})` : ""}`, link: "#/catering" });
+  }
+  for (const f of Z.fahrten.filter((x) => x.eigen)) {
+    const sp = spiel(f.spielId);
+    const mit = Z.mitfahrer.filter((m) => m.fahrtId === f.id).map((m) => m.name);
+    if (kommt(sp)) t.push({ key: "f" + f.id, spiel: sp, text: `Du fährst${mit.length ? ": " + mit.join(", ") : ""}${f.treffpunkt ? " · " + f.treffpunkt : ""}`, link: "#/fahrten" });
+  }
+  for (const m of Z.mitfahrer.filter((x) => x.eigen)) {
+    const f = Z.fahrten.find((x) => x.id === m.fahrtId);
+    const sp = f && spiel(f.spielId);
+    if (kommt(sp)) t.push({ key: "m" + m.id, spiel: sp, text: `${m.name} fährt mit bei ${f.fahrer.split(" (")[0]}${f.treffpunkt ? " · " + f.treffpunkt : ""}`, link: "#/fahrten" });
+  }
+  if (meinKind()) {
+    for (const p of trikotPlan().filter((p) => !p.erledigt && p.spiel.datum >= heute() && p.familie === "Familie von " + meinKind())) {
+      t.push({ key: "t" + p.spiel.id, spiel: p.spiel, text: "Ihr nehmt die Trikots zum Waschen mit", link: "#/trikots" });
+    }
+  }
+  return t.sort((a, b) => (a.spiel.datum + a.spiel.zeit).localeCompare(b.spiel.datum + b.spiel.zeit));
+}
+
+function kalenderLaden(termine) {
+  if (!termine.length) return;
+  const f = (d) => d.replace(/-/g, "");
+  const z = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//OTV C-Jugend//DE", "CALSCALE:GREGORIAN"];
+  for (const t of termine) {
+    const s = t.spiel;
+    const titel = `${t.text.split(" · ")[0]}: ${s.heim ? "OTV gegen " + s.gegner : s.gegner + " gegen OTV"}`;
+    z.push("BEGIN:VEVENT", `UID:${t.key}@otv-c-jugend`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, "").slice(0, 15)}Z`);
+    if (s.zeit) {
+      const [h, m] = s.zeit.split(":").map(Number);
+      const ende = `${String(Math.min(23, h + 2)).padStart(2, "0")}${String(m).padStart(2, "0")}00`;
+      z.push(`DTSTART:${f(s.datum)}T${s.zeit.replace(":", "")}00`, `DTEND:${f(s.datum)}T${ende}`);
+    } else {
+      z.push(`DTSTART;VALUE=DATE:${f(s.datum)}`);
+    }
+    z.push(`SUMMARY:${titel.replace(/[,;]/g, "\\$&")}`);
+    if (s.halle) z.push(`LOCATION:${s.halle.replace(/[,;]/g, "\\$&")}`);
+    z.push(`DESCRIPTION:${(t.text + "\\n" + location.origin + "/" + t.link).replace(/[,;]/g, "\\$&")}`);
+    z.push("BEGIN:VALARM", "TRIGGER:-P1D", "ACTION:DISPLAY", "DESCRIPTION:Erinnerung OTV C-Jugend", "END:VALARM", "END:VEVENT");
+  }
+  z.push("END:VCALENDAR");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([z.join("\r\n")], { type: "text/calendar;charset=utf-8" }));
+  a.download = termine.length === 1 ? "OTV-Termin.ics" : "OTV-Termine.ics";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  meldung("Kalenderdatei geladen, bitte öffnen und hinzufügen");
+}
+
 function seiteStart() {
+  const e = Z.einstellungen;
+  const heim = kommende(heimspiele())[0];
   const naechstes = kommende(spieleSortiert())[0];
-  const naechstesHeim = kommende(heimspiele())[0];
   const { saldo } = kassenSummen();
   const plan = trikotPlan();
-  const trikot = plan.find((p) => !p.erledigt && p.spiel.datum >= heute()) || plan.find((p) => !p.erledigt);
-  let standdienstInfo = `<p class="leer">Kein Heimspiel eingetragen.</p>`;
-  if (naechstesHeim) {
-    const belegt = Z.standdienst.filter((x) => x.spielId === naechstesHeim.id && !x.reserve).length;
-    const frei = Z.einstellungen.standdienstPlaetze - belegt;
-    const artikelOffen = Z.einstellungen.cateringArtikel.filter((a) =>
-      Z.catering.filter((c) => c.spielId === naechstesHeim.id && c.artikel === a.name).length < a.bedarf).map((a) => a.name);
-    standdienstInfo = `${spielZeile(naechstesHeim)}
-      <p class="abstand" style="margin-bottom:4px"><strong>${frei > 0 ? `${frei} Standdienst-Platz${frei === 1 ? "" : "plätze"} frei` : "Standdienst komplett besetzt"}</strong></p>
-      <p class="leise">${artikelOffen.length ? "Noch offen: " + artikelOffen.map(esc).join(", ") : "Mitbringliste ist komplett."}</p>
-      <a class="knopf" href="#/catering">Eintragen</a>`;
+  const trikot = plan.find((p) => !p.erledigt && p.spiel.datum >= heute());
+
+  let hero = `<section class="karte hero"><p class="leer">Gerade steht kein Heimspiel an.</p></section>`;
+  if (heim) {
+    const st = cateringStatus(heim);
+    const ichDienst = Z.standdienst.some((x) => x.spielId === heim.id && x.eigen);
+    const frei = st.plaetze - st.dienst;
+    const knoepfe = [];
+    if (frei > 0 && !ichDienst) knoepfe.push(`<button class="knopf gross" data-aktion="standdienst-ich" data-spiel="${heim.id}">🙋 Ich übernehme Standdienst</button>`);
+    for (const a of st.offen) knoepfe.push(`<button class="knopf zweit gross" data-aktion="bringe-schnell" data-spiel="${heim.id}" data-artikel="${esc(a.name)}">Ich bringe ${esc(a.name)}</button>`);
+    hero = `<section class="karte hero">
+      <div class="kachel-label">Nächstes Heimspiel</div>
+      ${spielZeile(heim)}
+      <div class="hero-status">
+        ${st.komplett ? `<p class="gut">✓ Alles besetzt, danke!</p>` : `<p><strong>Es fehlen noch:</strong> ${[frei > 0 ? `${frei}× Standdienst` : "", ...st.offen.map((a) => `${a.bedarf - a.zugesagt}× ${a.name}`)].filter(Boolean).map(esc).join(", ")}</p>`}
+        ${ichDienst ? `<p class="gut">✓ Du hast hier Standdienst.</p>` : ""}
+      </div>
+      ${knoepfe.length ? `<div class="hero-knoepfe">${knoepfe.join("")}</div>` : ""}
+      <p class="abstand" style="margin-bottom:0"><a href="#/catering">Alle Heimspiele ansehen</a></p>
+    </section>`;
   }
-  return `${kopfzeile("Willkommen im Elternbereich", "OTV männliche C-Jugend")}
-  <div class="raster">
-    <section class="karte"><div class="kachel-label">Nächstes Spiel</div>
-      ${naechstes ? spielZeile(naechstes) : `<p class="leer">Noch kein Spiel eingetragen.</p>`}
-      <p class="abstand"><a href="#/spiele">Alle Spiele und Tabelle</a></p></section>
-    <section class="karte"><div class="kachel-label">Nächstes Heimspiel-Catering</div>${standdienstInfo}</section>
+
+  const termine = meineTermine();
+  const meine = `<section class="karte">
+    <div class="karte-kopf" style="margin-bottom:4px"><h2 style="margin:0">Meine Termine</h2>
+      ${termine.length > 1 ? `<button class="link-knopf" data-aktion="kalender" data-alle="1">📅 Alle in den Kalender</button>` : ""}</div>
+    ${termine.length ? `<ul class="liste">${termine.map((t) => `<li>
+        <a class="termin" href="${t.link}">${datumBlock(t.spiel.datum)}<span><strong>${esc(t.text)}</strong>
+          <span class="leise klein">${t.spiel.zeit ? esc(t.spiel.zeit) + " Uhr · " : ""}${t.spiel.heim ? "gegen " : "bei "}${esc(t.spiel.gegner)}</span></span></a>
+        <button class="knopf zweit klein" data-aktion="kalender" data-key="${t.key}" aria-label="In den Kalender">📅</button></li>`).join("")}</ul>`
+      : `<p class="leer">Du hast dich noch nirgends eingetragen. Oben geht es mit einem Klick.</p>`}
+  </section>`;
+
+  return `<p class="unterzeile">${meinVorname() ? "Hallo " + esc(meinVorname()) : "Willkommen"}</p><h1>Was steht an?</h1>
+  ${hero}
+  <div class="raster abstand">
+    ${meine}
+    ${fahrtKachel()}
     <section class="karte"><div class="kachel-label">Mannschaftskasse</div>
       <div class="zahl-gross ${saldo < 0 ? "minus" : ""}">${euro(saldo)}</div>
-      <p class="leise">aktueller Kassenstand</p>
       <a href="#/kasse">Kassenbericht ansehen</a></section>
-    ${fahrtKachel()}
     <section class="karte"><div class="kachel-label">Trikots waschen</div>
-      ${trikot ? `<div class="zahl-gross" style="font-size:24px">${esc(trikot.familie)}</div>
-        <p class="leise">nach dem Spiel am ${datumKurz(trikot.spiel.datum)} gegen ${esc(trikot.spiel.gegner)}</p>`
-        : `<p class="leer">Noch keine Spiele oder Familien eingetragen.</p>`}
+      ${trikot ? `<div class="zahl-gross" style="font-size:22px">${esc(trikot.familie)}</div>
+        <p class="leise">nach dem Spiel am ${datumKurz(trikot.spiel.datum)}</p>` : `<p class="leer">Kein Termin offen.</p>`}
       <a href="#/trikots">Zum Waschplan</a></section>
+    ${naechstes && naechstes !== heim ? `<section class="karte"><div class="kachel-label">Nächstes Spiel</div>${spielZeile(naechstes)}<p class="abstand" style="margin:12px 0 0"><a href="#/spiele">Alle Spiele</a></p></section>` : ""}
   </div>`;
 }
 
@@ -231,7 +312,7 @@ function seiteSpiele() {
 }
 
 let offeneSpiele = null; // welche Heimspiel-Karten aufgeklappt sind
-const meinName = () => (document.getElementById("mein-name")?.value || gemerkterName()).trim();
+const meinName = () => gemerkterName().trim();
 
 function cateringStatus(s) {
   const e = Z.einstellungen;
@@ -320,7 +401,6 @@ function seiteCatering() {
   };
 
   return `${kopfzeile("Standdienst und Mitbringliste", "Heimspiel-Catering")}
-  ${nameLeiste()}
   ${uebersicht}
   <div class="abstand">${k.length ? k.map(karte).join("") : `<section class="karte"><p class="leer">Kein kommendes Heimspiel eingetragen.</p></section>`}</div>
   ${v.length ? `<details class="abstand"><summary>Vergangene Heimspiele (${v.length})</summary><div class="abstand">${[...v].reverse().map(karte).join("")}</div></details>` : ""}`;
@@ -348,7 +428,27 @@ function seiteTrikots() {
   </section>`;
 }
 
+function kasseEinfach() {
+  const e = Z.einstellungen;
+  const { saldo } = kassenSummen();
+  const letzte = kassenBuchungen().reverse().slice(0, 5);
+  return `${kopfzeile("Transparent für alle Eltern", "Mannschaftskasse")}
+  <section class="karte kasse-gross">
+    <div class="kachel-label">Aktueller Kassenstand</div>
+    <div class="zahl-riesig ${saldo < 0 ? "minus" : ""}">${euro(saldo)}</div>
+  </section>
+  <section class="karte abstand">
+    <h2>Letzte Buchungen</h2>
+    ${letzte.length ? `<ul class="liste">${letzte.map((b) => `<li>
+      <div><strong>${esc(b.zweck)}</strong><div class="leise klein">${datumKurz(b.datum)} · ${esc(b.kanal)}</div></div>
+      <strong class="${b.art === "einnahme" ? "plus" : "minus"}" style="white-space:nowrap">${b.art === "einnahme" ? "+" : "−"} ${euro(b.betrag)}</strong></li>`).join("")}</ul>`
+      : `<p class="leer">Noch keine Buchungen.</p>`}
+    <button class="knopf zweit abstand" data-aktion="kassen-details">Alle Details anzeigen</button>
+  </section>`;
+}
+
 function seiteKasse() {
+  if (!istAdmin() && !kassenDetails) return kasseEinfach();
   const e = Z.einstellungen;
   const { ein, aus, saldo } = kassenSummen();
   const buchungen = kassenBuchungen();
@@ -369,6 +469,7 @@ function seiteKasse() {
     : `<p class="leer">Noch keine Buchungen.</p>`;
   const opt = (liste, wert) => liste.map((x) => `<option ${x === wert ? "selected" : ""}>${esc(x)}</option>`).join("");
   return `${kopfzeile("Transparent für alle Eltern", "Mannschaftskasse")}
+  ${!istAdmin() ? `<p><button class="link-knopf" data-aktion="kassen-details">‹ Zurück zur einfachen Ansicht</button></p>` : ""}
   <div class="raster">
     <section class="karte"><div class="kachel-label">Kassenstand</div><div class="zahl-gross ${saldo < 0 ? "minus" : ""}">${euro(saldo)}</div>
       <p class="leise" style="margin:0">Anfangsbestand ${euro(e.anfangsbestand)} am ${datumKurz(e.anfangsdatum)}</p></section>
@@ -421,6 +522,9 @@ function seiteKasse() {
 }
 
 function seiteGalerie() {
+  if (!Z.einstellungen.galerieAktiv && !istAdmin()) {
+    return `${kopfzeile("Erinnerungen der Saison", "Galerie")}<section class="karte"><p>Die Galerie startet, sobald mit dem Verein alles abgestimmt ist.</p></section>`;
+  }
   if (!galerieGeladen) {
     api("GET", "/api/galerie").then((g) => { galerie = g; galerieGeladen = true; zeigen(); })
       .catch((e) => meldung(e.message, true));
@@ -432,6 +536,7 @@ function seiteGalerie() {
   const gemeldet = galerie.filter((f) => f.gemeldet).length;
   const albumVorschlaege = [...new Set([...galerie.map((f) => f.album), ...heimspiele().concat(vergangene(spieleSortiert())).map((s) => `${datumKurz(s.datum)} ${s.gegner}`)])];
   return `${kopfzeile("Erinnerungen der Saison", "Galerie")}
+  ${istAdmin() && !Z.einstellungen.galerieAktiv ? `<div class="hinweis">Die Galerie ist für Eltern noch ausgeblendet. Freigabe unter Verwaltung.</div>` : ""}
   ${istAdmin() && gemeldet ? `<div class="hinweis">${gemeldet} Foto${gemeldet === 1 ? " wurde" : "s wurden"} zur Prüfung gemeldet und ist für Eltern ausgeblendet. Rot markiert, bitte prüfen.</div>` : ""}
   <details class="karte" ${galerie.length ? "" : "open"}>
     <summary>Fotos hochladen</summary>
@@ -478,6 +583,9 @@ function seiteVerwaltung() {
           <div class="feld"><label>Stichtag</label><input type="date" name="anfangsdatum" value="${esc(e.anfangsdatum)}"></div>
           <div class="feld"><label>Standdienst-Plätze pro Heimspiel</label><input type="number" min="1" max="10" name="standdienstPlaetze" value="${e.standdienstPlaetze}"></div>
           <div class="feld"><label>Reserveplätze</label><input type="number" min="0" max="5" name="reservePlaetze" value="${e.reservePlaetze ?? 1}"></div>
+        </div>
+        <label class="schalter abstand"><input type="checkbox" name="galerieAktiv" ${e.galerieAktiv ? "checked" : ""}> Galerie für Eltern freigeben</label>
+        <div>
         </div>
         <label class="abstand">Liga</label><input type="text" name="liga" value="${esc(e.liga)}">
         <label class="abstand">Text zur Mannschaft</label><textarea name="teamText">${esc(e.teamText)}</textarea>
@@ -536,13 +644,6 @@ function seiteDatenschutz() {
 
 
 // ---------- Bausteine ----------
-function nameLeiste() {
-  return `<div class="name-leiste karte">
-    <label for="mein-name">Dein Name für Eintragungen</label>
-    <input id="mein-name" type="text" maxlength="60" value="${esc(gemerkterName())}" placeholder="z. B. Peggy (Mama von Piet)">
-    <p class="leise klein" style="margin:6px 0 0">Wird auf diesem Gerät gemerkt. Eigene Einträge kannst du hier wieder entfernen.</p>
-  </div>`;
-}
 const wtDatum = (s) => datum(s.datum).toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit" });
 const namenListe = (arr) => [...new Set(arr)].join(", ");
 
@@ -724,7 +825,7 @@ function seiteFahrten() {
         </div>
         <div>${mit.map((m) => `<span class="chip">${esc(m.name)}${darfLoeschen(m) ? `<button class="x" title="austragen" data-aktion="loeschen" data-col="mitfahrer" data-id="${m.id}" data-frage="${esc(m.name)} austragen?">×</button>` : `<span style="width:6px"></span>`}</span>`).join("")}</div>
         ${frei > 0 ? `<form class="zeile mitfahren" data-form="mitfahrer" data-fahrt="${f.id}">
-          <div class="feld"><select name="name" aria-label="Kind auswählen">${kinder.length ? `<option value="">Kind auswählen …</option>${kinder.map((n) => `<option>${esc(n)}</option>`).join("")}` : `<option value="">alle Kinder eingetragen</option>`}<option value="__andere">jemand anderes …</option></select></div>
+          <div class="feld"><select name="name" aria-label="Kind auswählen">${kinder.length ? `<option value="">Kind auswählen …</option>${kinder.map((n) => `<option ${n === meinKind() ? "selected" : ""}>${esc(n)}</option>`).join("")}` : `<option value="">alle Kinder eingetragen</option>`}<option value="__andere">jemand anderes …</option></select></div>
           <button class="knopf klein">Mitfahren</button></form>` : ""}
       </li>`;
     }).join("");
@@ -748,10 +849,101 @@ function seiteFahrten() {
     </details>`;
   };
   return `${kopfzeile("Gemeinsam zu den Auswärtsspielen", "Fahrgemeinschaften")}
-  ${nameLeiste()}
   <div class="hinweis info">Wer fährt, bietet Plätze an. Wer mitfahren möchte, trägt sein Kind bei einer Fahrt ein.</div>
   ${k.length ? k.map(karte).join("") : `<section class="karte"><p class="leer">Kein kommendes Auswärtsspiel eingetragen.</p></section>`}
   ${v.length ? `<details class="abstand"><summary>Vergangene Auswärtsspiele (${v.length})</summary><div class="abstand">${[...v].reverse().map(karte).join("")}</div></details>` : ""}`;
+}
+
+
+// ---------- Willkommen und Name ----------
+function installHinweis() {
+  if (matchMedia("(display-mode: standalone)").matches || navigator.standalone) return "";
+  const ua = navigator.userAgent;
+  if (/iPhone|iPad|iPod/.test(ua)) return `<p class="tipp">📱 <strong>Tipp:</strong> Unten in Safari auf <strong>Teilen</strong> tippen und <strong>„Zum Home-Bildschirm“</strong> wählen. Dann ist die Seite wie eine App auf dem Handy.</p>`;
+  if (/Android/.test(ua)) return `<p class="tipp">📱 <strong>Tipp:</strong> Oben rechts im Chrome-Menü <strong>⋮</strong> auf <strong>„App installieren“</strong> oder <strong>„Zum Startbildschirm hinzufügen“</strong> tippen.</p>`;
+  return "";
+}
+
+function willkommen({ nurName = false } = {}) {
+  return new Promise((fertig) => {
+    const box = document.createElement("div");
+    box.className = "lightbox";
+    box.setAttribute("role", "dialog");
+    box.innerHTML = `<form class="dialog-box">
+      ${nurName ? `<h2>Wie heißt du?</h2><p class="leise">Damit die anderen sehen, wer sich eingetragen hat.</p>`
+        : `<h2>Willkommen! 👋</h2>
+        <p>Hier organisieren wir Eltern alles rund um die Spiele der C-Jugend: Standdienst, Kuchen, Fahrten, Trikots und Kasse.</p>
+        <ul class="punkte-liste">
+          <li>Eintragen geht mit einem Klick, austragen genauso.</li>
+          <li>Was du zugesagt hast, steht auf der Startseite unter <strong>Meine Termine</strong>.</li>
+          <li>Absprachen laufen weiter über WhatsApp.</li>
+        </ul>`}
+      <label for="w-name">Dein Vorname</label>
+      <input id="w-name" type="text" maxlength="40" required value="${esc(meinVorname())}" placeholder="z. B. Peggy" autocomplete="given-name">
+      <label for="w-kind" class="abstand" style="margin-top:12px">Dein Kind in der Mannschaft</label>
+      <select id="w-kind"><option value="">bitte wählen …</option>${kader().map((k) => `<option ${k.vorname === meinKind() ? "selected" : ""}>${esc(k.vorname)}</option>`).join("")}</select>
+      ${nurName ? "" : installHinweis()}
+      <div class="ausrichten abstand" style="margin-top:16px">
+        <button class="knopf gross">${nurName ? "Weiter" : "Los geht’s"}</button>
+        <button type="button" class="link-knopf" data-w="spaeter">später</button>
+      </div></form>`;
+    const schliessen = (wert) => { lokal("otv_willkommen", "1"); box.remove(); fertig(wert); };
+    box.querySelector("form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const vorname = box.querySelector("#w-name").value.trim();
+      const kind = box.querySelector("#w-kind").value;
+      if (!vorname) return;
+      lokal("otv_vorname", vorname);
+      lokal("otv_kind", kind);
+      lokal("otv_name", kind ? `${vorname} (${kind})` : vorname);
+      kopfAktualisieren();
+      schliessen(gemerkterName());
+    });
+    box.querySelector("[data-w=spaeter]").addEventListener("click", () => schliessen(""));
+    document.body.appendChild(box);
+    setTimeout(() => box.querySelector("#w-name").focus(), 50);
+  });
+}
+
+async function nameSicherstellen() {
+  if (meinName()) return meinName();
+  const name = await willkommen({ nurName: true });
+  if (!name) throw new Error("Ohne Namen geht das Eintragen leider nicht");
+  return name;
+}
+
+function kopfAktualisieren() {
+  const v = meinVorname();
+  $("#hallo").textContent = v ? `👤 ${v}` : "Name eintragen";
+  $("#hallo").title = "Name ändern";
+  const galerieSichtbar = Z && (Z.einstellungen.galerieAktiv || istAdmin());
+  document.body.classList.toggle("ohne-galerie", !galerieSichtbar);
+}
+
+function mehrMenue() {
+  const box = document.createElement("div");
+  box.className = "lightbox sheet-hinter";
+  const links = [
+    ["#/mannschaft", "👥", "Mannschaft"], ["#/spiele", "🤾", "Spiele und Tabelle"], ["#/trikots", "👕", "Trikots waschen"],
+    ...(Z.einstellungen.galerieAktiv || istAdmin() ? [["#/galerie", "📷", "Galerie"]] : []),
+    ...(istAdmin() ? [["#/verwaltung", "⚙️", "Verwaltung"]] : []),
+  ];
+  box.innerHTML = `<div class="sheet">
+    ${links.map(([h, i, t]) => `<a href="${h}"><span>${i}</span>${t}</a>`).join("")}
+    <button data-m="name"><span>✏️</span>Name ändern</button>
+    <button data-m="hilfe"><span>❓</span>Hilfe und App-Tipp</button>
+    <a href="#/datenschutz"><span>🔒</span>Datenschutz</a>
+    <button data-m="abmelden"><span>🚪</span>Abmelden</button>
+  </div>`;
+  box.addEventListener("click", async (e) => {
+    const t = e.target.closest("a,button");
+    if (e.target === box || t?.tagName === "A") return box.remove();
+    if (!t) return;
+    box.remove();
+    if (t.dataset.m === "name" || t.dataset.m === "hilfe") { await willkommen({ nurName: t.dataset.m === "name" }); zeigen(); }
+    if (t.dataset.m === "abmelden") { await fetch("/api/logout", { method: "POST" }); location.href = "/login.html"; }
+  });
+  document.body.appendChild(box);
 }
 
 // ---------- Router ----------
@@ -759,9 +951,9 @@ function zeigen() {
   const pfad = location.hash.replace(/^#\/?/, "").split("?")[0];
   const seite = SEITEN[pfad] || seiteStart;
   inhalt.innerHTML = seite();
-  document.querySelectorAll(".nav a").forEach((a) => a.classList.toggle("aktiv", a.getAttribute("href") === "#/" + pfad));
-  $("#nav").classList.remove("offen");
-  $("#menue-knopf").setAttribute("aria-expanded", "false");
+  document.querySelectorAll(".nav a, .unten-nav a").forEach((a) => a.classList.toggle("aktiv", a.getAttribute("href") === "#/" + pfad));
+  $("#unten-mehr").classList.toggle("aktiv", !["", "catering", "fahrten", "kasse"].includes(pfad));
+  kopfAktualisieren();
   if (pfad === "spiele" && Z.einstellungen.widgetToken) widgetsLaden();
 }
 
@@ -809,17 +1001,13 @@ inhalt.addEventListener("submit", async (ev) => {
         await api("POST", "/api/c/standdienst", { ...w, spielId: form.dataset.spiel });
         await neuLaden("Danke, du bist eingetragen"); break;
       case "catering": {
-        const name = meinName();
-        if (!name) { $("#mein-name").focus(); throw new Error("Bitte oben zuerst deinen Namen eintragen"); }
-        lokal("otv_name", name);
+        const name = await nameSicherstellen();
         offeneSpiele?.add(form.dataset.spiel);
         await api("POST", "/api/c/catering", { ...w, name, spielId: form.dataset.spiel });
         await neuLaden("Danke für die Zusage"); break;
       }
       case "fahrt": {
-        const name = meinName();
-        if (!name) { $("#mein-name").focus(); throw new Error("Bitte oben zuerst deinen Namen eintragen"); }
-        lokal("otv_name", name);
+        const name = await nameSicherstellen();
         offeneFahrten?.add(form.dataset.spiel);
         await api("POST", "/api/c/fahrten", { ...w, fahrer: name, plaetze: Number(w.plaetze), spielId: form.dataset.spiel });
         await neuLaden("Danke, deine Fahrt ist eingetragen"); break;
@@ -875,6 +1063,7 @@ inhalt.addEventListener("submit", async (ev) => {
           anfangsdatum: w.anfangsdatum,
           standdienstPlaetze: w.standdienstPlaetze,
           reservePlaetze: w.reservePlaetze,
+          galerieAktiv: w.galerieAktiv === "on",
           liga: w.liga,
           teamText: w.teamText,
           trainingszeiten: zeilen(w.trainingszeiten).map((z) => { const [tag, zeit, halle] = z.split("|").map((x) => (x || "").trim()); return { tag, zeit, halle }; }),
@@ -908,13 +1097,20 @@ inhalt.addEventListener("click", async (ev) => {
       await api("DELETE", `/api/c/${el.dataset.col}/${el.dataset.id}`);
       await neuLaden("Entfernt");
     } else if (a === "standdienst-ich") {
-      const name = meinName();
-      if (!name) { $("#mein-name").focus(); meldung("Bitte oben zuerst deinen Namen eintragen", true); return; }
-      lokal("otv_name", name);
+      const name = await nameSicherstellen();
       offeneSpiele?.add(el.dataset.spiel);
       el.disabled = true;
       await api("POST", "/api/c/standdienst", { spielId: el.dataset.spiel, name, reserve: el.dataset.reserve === "1" });
       await neuLaden(el.dataset.reserve ? "Danke, du bist als Reserve eingetragen" : "Danke, du bist eingetragen");
+    } else if (a === "bringe-schnell") {
+      const name = await nameSicherstellen();
+      el.disabled = true;
+      await api("POST", "/api/c/catering", { spielId: el.dataset.spiel, artikel: el.dataset.artikel, name, menge: "" });
+      await neuLaden(`Danke, du bringst ${el.dataset.artikel} mit`);
+    } else if (a === "kalender") {
+      kalenderLaden(el.dataset.alle ? meineTermine() : meineTermine().filter((t) => t.key === el.dataset.key));
+    } else if (a === "kassen-details") {
+      kassenDetails = !kassenDetails; zeigen();
     } else if (a === "mitbringen-oeffnen") {
       const f = inhalt.querySelector(`form[data-key="${el.dataset.key}"]`);
       f.hidden = !f.hidden;
@@ -958,9 +1154,6 @@ inhalt.addEventListener("toggle", (ev) => {
   if (!menge) return;
   if (d.open) menge.add(d.dataset.spiel); else menge.delete(d.dataset.spiel);
 }, true);
-inhalt.addEventListener("input", (ev) => {
-  if (ev.target.id === "mein-name") lokal("otv_name", ev.target.value.trim());
-});
 
 inhalt.addEventListener("change", async (ev) => {
   const el = ev.target;
@@ -1094,16 +1287,17 @@ function lightbox(start) {
 }
 
 // ---------- Start ----------
-$("#menue-knopf").addEventListener("click", () => {
-  const offen = $("#nav").classList.toggle("offen");
-  $("#menue-knopf").setAttribute("aria-expanded", String(offen));
-});
+$("#unten-mehr").addEventListener("click", mehrMenue);
+$("#hallo").addEventListener("click", async () => { await willkommen({ nurName: true }); zeigen(); });
 $("#abmelden").addEventListener("click", async () => {
   await fetch("/api/logout", { method: "POST" });
   location.href = "/login.html";
 });
 window.addEventListener("hashchange", () => { zeigen(); window.scrollTo(0, 0); });
 
-laden().then(zeigen).catch((e) => {
+laden().then(() => {
+  zeigen();
+  if (!lokal("otv_willkommen") && !meinName()) willkommen().then(() => zeigen());
+}).catch((e) => {
   inhalt.innerHTML = `<div class="hinweis">Die Seite konnte nicht geladen werden: ${esc(e.message)}</div>`;
 });
