@@ -40,6 +40,16 @@ const COLLECTIONS = {
     schreiben: "eltern", upsert: true,
     felder: { familie: S(40), erledigt: { typ: "bool" }, notiz: S(120) },
   },
+  fahrten: {
+    // Fahrgemeinschaft: ein Elternteil bietet Plätze für ein Auswärtsspiel an
+    schreiben: "eltern", eigeneLoeschen: true,
+    felder: { spielId: { ...S(40), pflicht: true }, fahrer: { ...S(60), pflicht: true }, plaetze: { typ: "zahl", pflicht: true },
+      treffpunkt: S(120), hinweis: S(160) },
+  },
+  mitfahrer: {
+    schreiben: "eltern", eigeneLoeschen: true,
+    felder: { fahrtId: { ...S(40), pflicht: true }, name: { ...S(40), pflicht: true }, eingetragenVon: S(60) },
+  },
   kasse: {
     schreiben: "kasse",
     felder: { datum: { typ: "datum", pflicht: true }, art: { typ: "wahl", werte: ["einnahme", "ausgabe"], pflicht: true },
@@ -294,6 +304,14 @@ export default async (request) => {
       if (methode === "POST") {
         if (!darf(rolle, def.schreiben)) return fehler("Keine Berechtigung", 403);
         const werte = pruefe(def, await request.json());
+        if (col === "fahrten" && (werte.plaetze < 1 || werte.plaetze > 8)) return fehler("Bitte 1 bis 8 freie Plätze angeben");
+        if (col === "mitfahrer") {
+          const fahrt = await store.get(`fahrten/${werte.fahrtId}`, { type: "json" });
+          if (!fahrt) return fehler("Diese Fahrt gibt es nicht mehr", 404);
+          const mit = (await liste(store, "mitfahrer")).filter((x) => x.fahrtId === werte.fahrtId);
+          if (mit.length >= fahrt.plaetze) return fehler("Diese Fahrt ist schon voll", 409);
+          if (mit.some((x) => x.name.toLowerCase() === werte.name.toLowerCase())) return fehler(`${werte.name} fährt hier schon mit`, 409);
+        }
         if (col === "standdienst") {
           const e = await einstellungen(store);
           const belegt = (await liste(store, "standdienst")).filter((x) => x.spielId === werte.spielId && !!x.reserve === werte.reserve).length;
@@ -326,6 +344,10 @@ export default async (request) => {
           return fehler("Nur eigene Einträge können gelöscht werden", 403);
         }
         await store.delete(`${col}/${id}`);
+        if (col === "fahrten") {
+          // Mitfahrer dieser Fahrt mit entfernen
+          for (const m of (await liste(store, "mitfahrer")).filter((x) => x.fahrtId === id)) await store.delete(`mitfahrer/${m.id}`);
+        }
         return json({ ok: true });
       }
     }

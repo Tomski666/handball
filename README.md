@@ -10,9 +10,10 @@ Hosting über GitHub und Netlify (Gratis-Tarif), Daten in Netlify Blobs. Kein Fr
 | Start | Übersicht: nächstes Spiel, nächstes Heimspiel-Catering, Kassenstand, wer die Trikots wäscht |
 | Mannschaft | Text, Liga, Kader (nur Vornamen), Trainer, Trainingszeiten. Ändern nur Kasse |
 | Spiele | handball.net-Widget (Spielplan, Tabelle) und eigene Terminliste. Termine pflegt die Kasse |
-| Heimspiel-Catering | Pro Heimspiel Standdienst (Plätze begrenzt) und Mitbringliste. Alle Eltern tragen sich ein und entfernen nur ihre eigenen Einträge |
+| Heimspiel-Catering | Pro Heimspiel Standdienst (Plätze begrenzt) und Mitbringliste. Alle Eltern tragen sich ein und entfernen nur ihre eigenen Einträge. 2 feste Plätze plus Reserve. Knopf „Text für WhatsApp“ |
+| Fahrten | Fahrgemeinschaften zu Auswärtsspielen: Plätze anbieten, Kinder eintragen, WhatsApp-Text |
 | Trikots | Waschplan reihum nach Kader, Tausch und „erledigt“ durch alle Eltern |
-| Kasse | Alle sehen Stand, Buchungen, Einnahmen nach Kanal, Ausgaben nach Zweck, CSV-Export. Buchen nur Kasse |
+| Kasse | Alle sehen Stand, Buchungen, Einnahmen nach Kanal, Ausgaben nach Zweck, CSV-Export, Ergebnis je Heimspiel. Buchen nur Kasse, inklusive „Heimspiel abrechnen“ mit fertigem WhatsApp-Text |
 | Galerie | Alle laden Fotos hoch (werden im Browser verkleinert, Standortdaten entfernt). Melden blendet ein Foto sofort aus, die Kasse gibt frei oder löscht |
 | Verwaltung | Nur Kasse: Kader, Trainer, Anfangsbestand, Mitbringliste, Kategorien, Widget-Token |
 
@@ -57,3 +58,7 @@ netlify/functions/      api.mjs: Login, Daten, Galerie
 netlify/shared/         session.js: signiertes Anmelde-Cookie
 netlify.toml            Konfiguration, noindex und Sicherheits-Header
 ```
+
+## Als App auf dem Handy
+
+iPhone: Seite in Safari öffnen, Teilen, „Zum Home-Bildschirm“. Android: Chrome-Menü, „Zum Startbildschirm hinzufügen“ bzw. „App installieren“.

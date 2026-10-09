@@ -120,6 +120,7 @@ const SEITEN = {
   mannschaft: seiteMannschaft,
   spiele: seiteSpiele,
   catering: seiteCatering,
+  fahrten: seiteFahrten,
   trikots: seiteTrikots,
   kasse: seiteKasse,
   galerie: seiteGalerie,
@@ -154,6 +155,7 @@ function seiteStart() {
       <div class="zahl-gross ${saldo < 0 ? "minus" : ""}">${euro(saldo)}</div>
       <p class="leise">aktueller Kassenstand</p>
       <a href="#/kasse">Kassenbericht ansehen</a></section>
+    ${fahrtKachel()}
     <section class="karte"><div class="kachel-label">Trikots waschen</div>
       ${trikot ? `<div class="zahl-gross" style="font-size:24px">${esc(trikot.familie)}</div>
         <p class="leise">nach dem Spiel am ${datumKurz(trikot.spiel.datum)} gegen ${esc(trikot.spiel.gegner)}</p>`
@@ -312,15 +314,13 @@ function seiteCatering() {
           <ul class="liste">${reservePlaetze}</ul>` : ""}</div>
         <div><h3>Mitbringliste</h3><ul class="liste">${artikel}</ul></div>
       </div>
+      <div class="karte-fuss"><button class="knopf zweit klein" data-aktion="whatsapp-catering" data-spiel="${s.id}">📲 Text für WhatsApp</button>
+        <span class="leise klein">Fertiger Text mit allem, was noch fehlt</span></div>
     </details>`;
   };
 
   return `${kopfzeile("Standdienst und Mitbringliste", "Heimspiel-Catering")}
-  <div class="name-leiste karte">
-    <label for="mein-name">Dein Name für Eintragungen</label>
-    <input id="mein-name" type="text" maxlength="60" value="${esc(gemerkterName())}" placeholder="z. B. Peggy (Mama von Piet)">
-    <p class="leise klein" style="margin:6px 0 0">Wird auf diesem Gerät gemerkt. Eigene Einträge kannst du hier wieder entfernen.</p>
-  </div>
+  ${nameLeiste()}
   ${uebersicht}
   <div class="abstand">${k.length ? k.map(karte).join("") : `<section class="karte"><p class="leer">Kein kommendes Heimspiel eingetragen.</p></section>`}</div>
   ${v.length ? `<details class="abstand"><summary>Vergangene Heimspiele (${v.length})</summary><div class="abstand">${[...v].reverse().map(karte).join("")}</div></details>` : ""}`;
@@ -380,8 +380,10 @@ function seiteKasse() {
     <section class="karte"><h2>Ausgaben nach Zweck</h2>${balken(gruppe("ausgabe", "kategorie"), aus, "var(--rot)")}</section>
   </div>
 
+  ${spielErgebnisse()}
+  ${abrechnungsFormular()}
   <section class="karte abstand nur-kasse">
-    <h2 id="buchung-titel">Buchung erfassen</h2>
+    <h2 id="buchung-titel">Einzelne Buchung erfassen</h2>
     <form class="zeile" data-form="kasse">
       <input type="hidden" name="id">
       <div class="feld" style="flex-basis:150px"><label>Datum</label><input type="date" name="datum" required value="${heute()}"></div>
@@ -532,6 +534,226 @@ function seiteDatenschutz() {
   </section>`;
 }
 
+
+// ---------- Bausteine ----------
+function nameLeiste() {
+  return `<div class="name-leiste karte">
+    <label for="mein-name">Dein Name für Eintragungen</label>
+    <input id="mein-name" type="text" maxlength="60" value="${esc(gemerkterName())}" placeholder="z. B. Peggy (Mama von Piet)">
+    <p class="leise klein" style="margin:6px 0 0">Wird auf diesem Gerät gemerkt. Eigene Einträge kannst du hier wieder entfernen.</p>
+  </div>`;
+}
+const wtDatum = (s) => datum(s.datum).toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit" });
+const namenListe = (arr) => [...new Set(arr)].join(", ");
+
+// Teilen-Fenster: Text kopieren oder direkt in WhatsApp öffnen
+function teilen(text) {
+  const box = document.createElement("div");
+  box.className = "lightbox";
+  box.setAttribute("role", "dialog");
+  box.innerHTML = `<div class="teilen-box">
+    <h2 style="margin-bottom:8px">Text für WhatsApp</h2>
+    <textarea readonly>${esc(text)}</textarea>
+    <div class="ausrichten abstand" style="margin-top:12px">
+      <button class="knopf" data-t="kopieren">Kopieren</button>
+      <a class="knopf zweit" href="https://wa.me/?text=${encodeURIComponent(text)}" target="_blank" rel="noopener">In WhatsApp öffnen</a>
+      <button class="knopf zweit" data-t="zu">Schließen</button>
+    </div></div>`;
+  box.addEventListener("click", async (e) => {
+    if (e.target === box || e.target.dataset.t === "zu") return box.remove();
+    if (e.target.dataset.t === "kopieren") {
+      try { await navigator.clipboard.writeText(text); }
+      catch { const t = box.querySelector("textarea"); t.select(); document.execCommand("copy"); }
+      meldung("Text kopiert, jetzt in die WhatsApp-Gruppe einfügen");
+    }
+  });
+  document.body.appendChild(box);
+}
+
+function cateringText(s) {
+  const e = Z.einstellungen;
+  const alle = Z.standdienst.filter((x) => x.spielId === s.id).sort((a, b) => a.erstellt.localeCompare(b.erstellt));
+  const dienst = alle.filter((x) => !x.reserve).map((x) => x.name);
+  const reserve = alle.filter((x) => x.reserve).map((x) => x.name);
+  const frei = Math.max(0, e.standdienstPlaetze - dienst.length);
+  const z = [`🤾 Heimspiel ${wtDatum(s)}${s.zeit ? " " + s.zeit + " Uhr" : ""} gegen ${s.gegner}`];
+  if (s.halle) z.push(`📍 ${s.halle}`);
+  z.push("", "👕 Standdienst:");
+  z.push(dienst.length ? `${frei ? "" : "✅ "}${dienst.join(", ")}` : "");
+  if (frei) z.push(`❗ noch ${frei} ${frei === 1 ? "Platz" : "Plätze"} frei`);
+  if ((e.reservePlaetze ?? 1) > 0) z.push(reserve.length ? `Reserve: ${reserve.join(", ")}` : "Reserve: noch frei");
+  z.push("", "🍰 Mitbringliste:");
+  for (const a of e.cateringArtikel) {
+    const zus = Z.catering.filter((c) => c.spielId === s.id && c.artikel === a.name);
+    const wer = zus.map((c) => (c.menge ? `${c.menge} von ` : "") + c.name).join(", ");
+    const fehlt = a.bedarf - zus.length;
+    z.push(fehlt > 0 ? `❗ ${a.name}: ${wer ? wer + ", " : ""}noch ${fehlt} gesucht` : `✅ ${a.name}: ${wer}`);
+  }
+  z.push("", `Eintragen: ${location.origin}/#/catering`);
+  return z.filter((x, i, arr) => !(x === "" && arr[i - 1] === "")).join("\n").replace(/Standdienst:\n\n/, "Standdienst:\n");
+}
+
+// ---------- Kasse: Ergebnis je Heimspiel ----------
+function spielBilanz(spielId) {
+  const b = Z.kasse.filter((x) => x.spielId === spielId);
+  const ein = b.filter((x) => x.art === "einnahme");
+  const aus = b.filter((x) => x.art === "ausgabe");
+  const summe = (l) => l.reduce((t, x) => t + x.betrag, 0);
+  const nach = (l, feld) => {
+    const m = new Map();
+    l.forEach((x) => m.set(x[feld] || "Sonstiges", (m.get(x[feld] || "Sonstiges") || 0) + x.betrag));
+    return [...m.entries()];
+  };
+  return { anzahl: b.length, ein: summe(ein), aus: summe(aus), einNach: nach(ein, "kanal"), ausNach: nach(aus, "kategorie") };
+}
+
+function spielErgebnisse() {
+  const zeilen = heimspiele().map((s) => ({ s, b: spielBilanz(s.id) })).filter((x) => x.b.anzahl);
+  if (!zeilen.length) return "";
+  return `<section class="karte abstand">
+    <h2>Ergebnis je Heimspiel</h2>
+    <div class="tabelle-wrap"><table>
+      <thead><tr><th>Heimspiel</th><th class="betrag">Einnahmen</th><th class="betrag">Ausgaben</th><th class="betrag">Ergebnis</th><th></th></tr></thead>
+      <tbody>${zeilen.reverse().map(({ s, b }) => `<tr>
+        <td><strong>${wtDatum(s)}</strong> <span class="leise">gegen ${esc(s.gegner)}</span></td>
+        <td class="betrag plus">${euro(b.ein)}</td>
+        <td class="betrag minus">${euro(b.aus)}</td>
+        <td class="betrag"><strong>${euro(b.ein - b.aus)}</strong></td>
+        <td style="text-align:right"><button class="link-knopf" data-aktion="whatsapp-abrechnung" data-spiel="${s.id}">📲 teilen</button></td>
+      </tr>`).join("")}</tbody></table></div>
+  </section>`;
+}
+
+function abrechnungsFormular() {
+  const e = Z.einstellungen;
+  const liste = heimspiele();
+  const vorschlag = [...vergangene(liste)].reverse().find((s) => !spielBilanz(s.id).anzahl) || kommende(liste)[0];
+  const opt = (l, wert) => l.map((x) => `<option ${x === wert ? "selected" : ""}>${esc(x)}</option>`).join("");
+  return `<section class="karte abstand nur-kasse">
+    <h2>Heimspiel abrechnen</h2>
+    <p class="leise">Nach dem Spiel einmal ausfüllen. Daraus entstehen die Buchungen und ein fertiger Text für die Gruppe. Leere Felder werden übersprungen.</p>
+    <form data-form="abrechnung">
+      <div class="zeile">
+        <div class="feld" style="flex-basis:260px"><label>Heimspiel</label><select name="spielId" required>${liste.map((s) => `<option value="${s.id}" ${vorschlag && s.id === vorschlag.id ? "selected" : ""}>${wtDatum(s)} gegen ${esc(s.gegner)}</option>`).join("")}</select></div>
+      </div>
+      <h3 class="abstand">Einnahmen</h3>
+      <div class="zeile">${e.kassenKanaele.map((k) => `<div class="feld" style="flex-basis:130px"><label>${esc(k)} (€)</label><input type="text" inputmode="decimal" name="ein:${esc(k)}" placeholder="0,00"></div>`).join("")}</div>
+      <h3 class="abstand">Ausgaben</h3>
+      <div class="zeile">
+        <div class="feld" style="flex-basis:150px"><label>Getränke OTV (€)</label><input type="text" inputmode="decimal" name="getraenke" placeholder="0,00"></div>
+        <div class="feld" style="flex-basis:130px"><label>bezahlt per</label><select name="getraenkeKanal">${opt(e.kassenKanaele, "Bar")}</select></div>
+        <div class="feld" style="flex-basis:150px"><label>Einkauf Catering (€)</label><input type="text" inputmode="decimal" name="einkauf" placeholder="0,00"></div>
+        <div class="feld" style="flex-basis:130px"><label>bezahlt per</label><select name="einkaufKanal">${opt(e.kassenKanaele, "Bar")}</select></div>
+        <div class="feld" style="flex-basis:200px"><label>Beleg / Notiz</label><input type="text" name="beleg" maxlength="120" placeholder="optional"></div>
+      </div>
+      <button class="knopf abstand">Abrechnung speichern</button>
+    </form>
+  </section>`;
+}
+
+function abrechnungsText(spielId) {
+  const s = Z.spiele.find((x) => x.id === spielId);
+  const b = spielBilanz(spielId);
+  const z = [`💰 Abrechnung Heimspiel gegen ${s.gegner} (${wtDatum(s)})`, ""];
+  z.push(`Einnahmen: ${euro(b.ein)}${b.einNach.length > 1 ? " (" + b.einNach.map(([k, v]) => `${k} ${euro(v)}`).join(", ") + ")" : ""}`);
+  if (b.aus) z.push(`Ausgaben: ${euro(b.aus)} (${b.ausNach.map(([k, v]) => `${k} ${euro(v)}`).join(", ")})`);
+  z.push(`Ergebnis: ${b.ein - b.aus >= 0 ? "+" : "−"}${euro(Math.abs(b.ein - b.aus))}`);
+  z.push(`Kassenstand jetzt: ${euro(kassenSummen().saldo)}`);
+  const helfer = Z.standdienst.filter((x) => x.spielId === spielId).map((x) => x.name);
+  const backen = Z.catering.filter((x) => x.spielId === spielId).map((x) => x.name);
+  if (helfer.length || backen.length) z.push("");
+  if (helfer.length) z.push(`Danke an den Standdienst: ${namenListe(helfer)} 🙌`);
+  if (backen.length) z.push(`Danke fürs Mitbringen: ${namenListe(backen)} 🍰`);
+  z.push("", `Details: ${location.origin}/#/kasse`);
+  return z.join("\n");
+}
+
+// ---------- Fahrgemeinschaften ----------
+let offeneFahrten = null;
+const auswaertsspiele = () => spieleSortiert().filter((s) => !s.heim);
+
+function fahrtStatus(s) {
+  const fahrten = Z.fahrten.filter((f) => f.spielId === s.id);
+  const plaetze = fahrten.reduce((t, f) => t + f.plaetze, 0);
+  const belegt = Z.mitfahrer.filter((m) => fahrten.some((f) => f.id === m.fahrtId)).length;
+  return { fahrten, plaetze, belegt, frei: plaetze - belegt };
+}
+
+function fahrtKachel() {
+  const s = kommende(auswaertsspiele())[0];
+  if (!s) return "";
+  const st = fahrtStatus(s);
+  return `<section class="karte"><div class="kachel-label">Nächste Auswärtsfahrt</div>
+    ${spielZeile(s)}
+    <p class="abstand" style="margin-bottom:4px"><strong>${st.fahrten.length ? `${st.fahrten.length} Fahrer, ${st.frei} ${st.frei === 1 ? "Platz" : "Plätze"} frei` : "Noch keine Fahrgemeinschaft"}</strong></p>
+    <a class="knopf" href="#/fahrten">Mitfahren oder Plätze anbieten</a></section>`;
+}
+
+function fahrtenText(s) {
+  const st = fahrtStatus(s);
+  const z = [`🚗 Fahrgemeinschaften Auswärtsspiel ${wtDatum(s)}${s.zeit ? " " + s.zeit + " Uhr" : ""} bei ${s.gegner}`];
+  if (s.halle) z.push(`📍 ${s.halle}`);
+  z.push("");
+  if (!st.fahrten.length) z.push("❗ Bisher bietet noch niemand Plätze an.");
+  for (const f of st.fahrten) {
+    const mit = Z.mitfahrer.filter((m) => m.fahrtId === f.id).map((m) => m.name);
+    const frei = f.plaetze - mit.length;
+    z.push(`${f.fahrer}${f.treffpunkt ? " · " + f.treffpunkt : ""}: ${mit.length ? mit.join(", ") : "noch niemand"}${frei > 0 ? ` (noch ${frei} frei)` : " (voll)"}`);
+  }
+  z.push("", `Eintragen: ${location.origin}/#/fahrten`);
+  return z.join("\n");
+}
+
+function seiteFahrten() {
+  const liste = auswaertsspiele();
+  const k = kommende(liste), v = vergangene(liste);
+  if (offeneFahrten === null) offeneFahrten = new Set(k.length ? [k[0].id] : []);
+  const karte = (s) => {
+    const st = fahrtStatus(s);
+    const vergeben = new Set(Z.mitfahrer.filter((m) => st.fahrten.some((f) => f.id === m.fahrtId)).map((m) => m.name));
+    const kinder = kader().map((x) => x.vorname).filter((n) => !vergeben.has(n));
+    const fahrten = st.fahrten.map((f) => {
+      const mit = Z.mitfahrer.filter((m) => m.fahrtId === f.id).sort((a, b) => a.erstellt.localeCompare(b.erstellt));
+      const frei = f.plaetze - mit.length;
+      return `<li class="fahrt">
+        <div class="fahrt-kopf">
+          <div><strong>🚗 ${esc(f.fahrer)}</strong> <span class="pill ${frei > 0 ? "ok" : "neutral"}">${frei > 0 ? `${frei} von ${f.plaetze} frei` : "voll"}</span>
+            ${f.treffpunkt ? `<div class="leise klein">Treffpunkt: ${esc(f.treffpunkt)}</div>` : ""}
+            ${f.hinweis ? `<div class="leise klein">${esc(f.hinweis)}</div>` : ""}</div>
+          ${darfLoeschen(f) ? `<button class="link-knopf" style="color:var(--rot)" data-aktion="loeschen" data-col="fahrten" data-id="${f.id}" data-frage="Fahrt löschen? Eingetragene Mitfahrer werden mit entfernt.">Fahrt löschen</button>` : ""}
+        </div>
+        <div>${mit.map((m) => `<span class="chip">${esc(m.name)}${darfLoeschen(m) ? `<button class="x" title="austragen" data-aktion="loeschen" data-col="mitfahrer" data-id="${m.id}" data-frage="${esc(m.name)} austragen?">×</button>` : `<span style="width:6px"></span>`}</span>`).join("")}</div>
+        ${frei > 0 ? `<form class="zeile mitfahren" data-form="mitfahrer" data-fahrt="${f.id}">
+          <div class="feld"><select name="name" aria-label="Kind auswählen">${kinder.length ? `<option value="">Kind auswählen …</option>${kinder.map((n) => `<option>${esc(n)}</option>`).join("")}` : `<option value="">alle Kinder eingetragen</option>`}<option value="__andere">jemand anderes …</option></select></div>
+          <button class="knopf klein">Mitfahren</button></form>` : ""}
+      </li>`;
+    }).join("");
+    const status = st.fahrten.length
+      ? `<span class="pill neutral">${st.fahrten.length} Fahrer</span> <span class="pill ${st.frei > 0 ? "ok" : "offen"}">${st.frei > 0 ? `${st.frei} ${st.frei === 1 ? "Platz" : "Plätze"} frei` : "alle Plätze belegt"}</span>`
+      : `<span class="pill offen">Noch keine Fahrt</span>`;
+    return `<details class="karte spiel-karte" data-gruppe="fahrten" data-spiel="${s.id}" id="fahrt-${s.id}" ${offeneFahrten.has(s.id) ? "open" : ""}>
+      <summary><div class="summary-innen">${spielZeile(s)}<div class="summary-status">${status}</div></div></summary>
+      <div class="fahrt-inhalt">
+        ${fahrten ? `<ul class="liste">${fahrten}</ul>` : `<p class="leer">Noch bietet niemand Plätze an.</p>`}
+        <details class="abstand"><summary>Ich fahre und habe Plätze frei</summary>
+          <form class="zeile" data-form="fahrt" data-spiel="${s.id}">
+            <div class="feld" style="flex-basis:110px"><label>Freie Plätze</label><select name="plaetze">${[1, 2, 3, 4, 5, 6].map((n) => `<option ${n === 3 ? "selected" : ""}>${n}</option>`).join("")}</select></div>
+            <div class="feld" style="flex-basis:240px"><label>Treffpunkt und Uhrzeit</label><input type="text" name="treffpunkt" maxlength="120" placeholder="z. B. 13:00 Uhr Parkplatz OTV-Halle"></div>
+            <div class="feld" style="flex-basis:200px"><label>Hinweis</label><input type="text" name="hinweis" maxlength="160" placeholder="optional, z. B. nur Hinfahrt"></div>
+            <button class="knopf">Fahrt anbieten</button>
+          </form></details>
+      </div>
+      <div class="karte-fuss"><button class="knopf zweit klein" data-aktion="whatsapp-fahrten" data-spiel="${s.id}">📲 Text für WhatsApp</button>
+        <span class="leise klein">Übersicht der Fahrten für die Gruppe</span></div>
+    </details>`;
+  };
+  return `${kopfzeile("Gemeinsam zu den Auswärtsspielen", "Fahrgemeinschaften")}
+  ${nameLeiste()}
+  <div class="hinweis info">Wer fährt, bietet Plätze an. Wer mitfahren möchte, trägt sein Kind bei einer Fahrt ein.</div>
+  ${k.length ? k.map(karte).join("") : `<section class="karte"><p class="leer">Kein kommendes Auswärtsspiel eingetragen.</p></section>`}
+  ${v.length ? `<details class="abstand"><summary>Vergangene Auswärtsspiele (${v.length})</summary><div class="abstand">${[...v].reverse().map(karte).join("")}</div></details>` : ""}`;
+}
+
 // ---------- Router ----------
 function zeigen() {
   const pfad = location.hash.replace(/^#\/?/, "").split("?")[0];
@@ -593,6 +815,41 @@ inhalt.addEventListener("submit", async (ev) => {
         offeneSpiele?.add(form.dataset.spiel);
         await api("POST", "/api/c/catering", { ...w, name, spielId: form.dataset.spiel });
         await neuLaden("Danke für die Zusage"); break;
+      }
+      case "fahrt": {
+        const name = meinName();
+        if (!name) { $("#mein-name").focus(); throw new Error("Bitte oben zuerst deinen Namen eintragen"); }
+        lokal("otv_name", name);
+        offeneFahrten?.add(form.dataset.spiel);
+        await api("POST", "/api/c/fahrten", { ...w, fahrer: name, plaetze: Number(w.plaetze), spielId: form.dataset.spiel });
+        await neuLaden("Danke, deine Fahrt ist eingetragen"); break;
+      }
+      case "mitfahrer": {
+        let kind = w.name;
+        if (kind === "__andere") kind = (prompt("Wer fährt mit? (nur Vorname)") || "").trim();
+        if (!kind) throw new Error("Bitte ein Kind auswählen");
+        await api("POST", "/api/c/mitfahrer", { fahrtId: form.dataset.fahrt, name: kind, eingetragenVon: meinName() });
+        await neuLaden(`${kind} fährt mit`); break;
+      }
+      case "abrechnung": {
+        const spiel = Z.spiele.find((x) => x.id === w.spielId);
+        if (spielBilanz(spiel.id).anzahl && !confirm("Für dieses Spiel gibt es schon Buchungen. Trotzdem zusätzlich buchen?")) break;
+        const zweck = `Heimspiel-Catering gegen ${spiel.gegner}`;
+        const buchungen = [];
+        for (const k of Z.einstellungen.kassenKanaele) {
+          const c = inCent(w["ein:" + k] || "");
+          if (c > 0) buchungen.push({ art: "einnahme", betrag: c, zweck, kategorie: "Heimspiel-Catering", kanal: k });
+        }
+        const getr = inCent(w.getraenke || "");
+        if (getr > 0) buchungen.push({ art: "ausgabe", betrag: getr, zweck: `Getränke OTV, Heimspiel gegen ${spiel.gegner}`, kategorie: "Getränke OTV", kanal: w.getraenkeKanal });
+        const eink = inCent(w.einkauf || "");
+        if (eink > 0) buchungen.push({ art: "ausgabe", betrag: eink, zweck: `Einkauf Catering, Heimspiel gegen ${spiel.gegner}`, kategorie: "Einkauf Catering", kanal: w.einkaufKanal });
+        if ([...Object.entries(w)].some(([k, v]) => /^(ein:|getraenke$|einkauf$)/.test(k) && v.trim() && !(inCent(v) > 0))) throw new Error("Bitte Beträge im Format 12,50 eingeben");
+        if (!buchungen.length) throw new Error("Bitte mindestens einen Betrag eintragen");
+        for (const b of buchungen) await api("POST", "/api/c/kasse", { ...b, datum: spiel.datum, spielId: spiel.id, beleg: w.beleg || "" });
+        await neuLaden(`${buchungen.length} Buchung${buchungen.length === 1 ? "" : "en"} gespeichert`);
+        teilen(abrechnungsText(spiel.id));
+        break;
       }
       case "kader":
         await api("POST", "/api/c/kader", w);
@@ -662,6 +919,12 @@ inhalt.addEventListener("click", async (ev) => {
       const f = inhalt.querySelector(`form[data-key="${el.dataset.key}"]`);
       f.hidden = !f.hidden;
       if (!f.hidden) f.querySelector("input[name=menge]").focus();
+    } else if (a === "whatsapp-catering") {
+      teilen(cateringText(Z.spiele.find((x) => x.id === el.dataset.spiel)));
+    } else if (a === "whatsapp-fahrten") {
+      teilen(fahrtenText(Z.spiele.find((x) => x.id === el.dataset.spiel)));
+    } else if (a === "whatsapp-abrechnung") {
+      teilen(abrechnungsText(el.dataset.spiel));
     } else if (a === "springen") {
       const d = document.getElementById("spiel-" + el.dataset.id);
       d.open = true;
@@ -690,8 +953,10 @@ inhalt.addEventListener("click", async (ev) => {
 
 inhalt.addEventListener("toggle", (ev) => {
   const d = ev.target;
-  if (!d.classList?.contains("spiel-karte") || !offeneSpiele) return;
-  if (d.open) offeneSpiele.add(d.dataset.spiel); else offeneSpiele.delete(d.dataset.spiel);
+  if (!d.classList?.contains("spiel-karte")) return;
+  const menge = d.dataset.gruppe === "fahrten" ? offeneFahrten : offeneSpiele;
+  if (!menge) return;
+  if (d.open) menge.add(d.dataset.spiel); else menge.delete(d.dataset.spiel);
 }, true);
 inhalt.addEventListener("input", (ev) => {
   if (ev.target.id === "mein-name") lokal("otv_name", ev.target.value.trim());

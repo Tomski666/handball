@@ -152,7 +152,7 @@ tr.erledigt td { color: var(--text-leise); }
 tr.naechstes td { background: var(--blau-hell); }
 
 /* Formulare */
-form.zeile { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
+.zeile { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
 label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
 .feld { flex: 1 1 160px; min-width: 0; }
 input[type=text], input[type=password], input[type=number], input[type=date], input[type=time], select, textarea {
@@ -278,3 +278,14 @@ form.mitbringen[hidden] { display: none; }
   table.uebersicht .kurz { display: inline; }
   table.uebersicht td, table.uebersicht th { padding: 8px 4px; }
 }
+
+/* Teilen, Fahrten, Kartenfuß */
+.pill.neutral { background: var(--blau-hell); color: var(--blau-dunkel); }
+.karte-fuss { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 12px 20px 16px; border-top: 1px solid var(--grau); }
+.teilen-box { background: #fff; color: var(--text); border-radius: 12px; padding: 20px; width: 100%; max-width: 560px; }
+.teilen-box textarea { min-height: 260px; font-size: 14px; line-height: 1.45; }
+.fahrt-inhalt { padding: 8px 20px 16px; }
+.fahrt-inhalt > details > summary { font-size: 15px; }
+li.fahrt { display: block; }
+.fahrt-kopf { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 6px; }
+form.mitfahren { margin-top: 8px; max-width: 420px; }
