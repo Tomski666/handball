@@ -7,7 +7,7 @@ Hosting über GitHub und Netlify (Gratis-Tarif), Daten in Netlify Blobs. Kein Fr
 
 | Bereich | Wer darf was |
 |---|---|
-| Start | „Was steht an?“ mit Ein-Klick-Knöpfen fürs nächste Heimspiel, „Meine Termine“ mit Kalender-Export, Fahrt, Kasse, Trikots |
+| Start | Nur drei Blöcke: nächstes Heimspiel mit „Ich übernehme Standdienst“ und „Ich bringe etwas mit“, „Meine Termine“ mit Kalender-Export, nächste Auswärtsfahrt (nur wenn sie in 10 Tagen ansteht) |
 | Mannschaft | Text, Liga, Kader (nur Vornamen), Trainer, Trainingszeiten. Ändern nur Kasse |
 | Spiele | handball.net-Widget (Spielplan, Tabelle) und eigene Terminliste. Termine pflegt die Kasse |
 | Heimspiel-Catering | Pro Heimspiel Standdienst (Plätze begrenzt) und Mitbringliste. Alle Eltern tragen sich ein und entfernen nur ihre eigenen Einträge. 2 feste Plätze plus Reserve. Knopf „Text für WhatsApp“ |
@@ -65,4 +65,4 @@ iPhone: Seite in Safari öffnen, Teilen, „Zum Home-Bildschirm“. Android: Chr
 
 ## Bedienung für Eltern
 
-Beim ersten Besuch fragt die Seite einmal nach Vorname und Kind und zeigt einen Tipp, wie man sie als App ablegt. Auf dem Handy liegt die Navigation unten (Start, Catering, Fahrten, Kasse, Mehr). Name und Kind lassen sich über den Namen oben rechts oder „Mehr“ ändern.
+Beim ersten Besuch fragt die Seite einmal nach Vorname und Kind und zeigt einen Tipp, wie man sie als App ablegt. Auf dem Handy liegt die Navigation unten (Start, Catering, Fahrten, Spiele, Mehr). Unter „Mehr“ liegen Kasse, Trikots, Mannschaft und Galerie. Name und Kind lassen sich über den Namen oben rechts oder „Mehr“ ändern.

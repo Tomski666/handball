@@ -360,3 +360,8 @@ input[type=file] { max-width: 100%; width: 100%; font-size: 15px; }
 .artikel-hinweis { flex-basis: 100%; margin-top: -4px; }
 .hero-knoepfe .knopf small { display: block; font-weight: 500; font-size: 12px; opacity: .8; margin-top: 2px; }
 .hero-knoepfe .knopf { flex-direction: column; }
+
+.hero-aktionen { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); margin-top: 14px; }
+.hero-aktionen .knopf { white-space: normal; }
+.mitbringen-auswahl[hidden] { display: none; }
+.mitbringen-auswahl .hero-knoepfe { margin-top: 0; }
