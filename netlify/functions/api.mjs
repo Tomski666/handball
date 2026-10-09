@@ -28,7 +28,7 @@ const COLLECTIONS = {
   },
   standdienst: {
     schreiben: "eltern", eigeneLoeschen: true,
-    felder: { spielId: { ...S(40), pflicht: true }, name: { ...S(60), pflicht: true }, hinweis: S(120) },
+    felder: { spielId: { ...S(40), pflicht: true }, name: { ...S(60), pflicht: true }, hinweis: S(120), reserve: { typ: "bool" } },
   },
   catering: {
     schreiben: "eltern", eigeneLoeschen: true,
@@ -58,7 +58,8 @@ const STANDARD_EINSTELLUNGEN = {
     { tag: "Dienstag", zeit: "17:30 bis 19:00 Uhr", halle: "Heiligenstock" },
     { tag: "Freitag", zeit: "18:00 bis 19:30 Uhr", halle: "Humboldt" },
   ],
-  standdienstPlaetze: 3,
+  standdienstPlaetze: 2,
+  reservePlaetze: 1,
   cateringArtikel: [
     { name: "Kuchen", bedarf: 2 },
     { name: "Muffins", bedarf: 2 },
@@ -74,7 +75,7 @@ const STANDARD_EINSTELLUNGEN = {
 
 // Spielplan Saison 2026/27 (Regionsoberliga männliche C, Meisterrunde) und Kader nur mit Vornamen.
 // Werden beim ersten Start angelegt bzw. per Datenstand-Abgleich ergänzt, ohne Bestehendes zu löschen.
-const DATENSTAND = 2;
+const DATENSTAND = 3;
 const STARTDATEN = {
   spiele: [
     { datum: "2026-10-10", zeit: "14:30", gegner: "Bergischer HC III", heim: true, halle: "OTV-Sporthalle", hinweis: "" },
@@ -188,6 +189,11 @@ async function abgleich(store, e) {
     if (t.rolle === "Trainerin" && t.name.startsWith("Marte")) await store.setJSON(`trainer/${t.id}`, { ...t, rolle: "Trainer" });
   }
   const neu = { ...e, datenstand: DATENSTAND };
+  // Datenstand 3: Standdienst mit 2 festen Plätzen und 1 Reserveplatz
+  if ((e.datenstand || 1) < 3) {
+    if (!e.standdienstPlaetze || e.standdienstPlaetze === 3) neu.standdienstPlaetze = 2;
+    if (neu.reservePlaetze === undefined) neu.reservePlaetze = 1;
+  }
   await store.setJSON("einstellungen", neu);
   return neu;
 }
@@ -273,7 +279,8 @@ export default async (request) => {
       const zusammen = { ...alt };
       for (const k of erlaubt) if (k in neu) zusammen[k] = neu[k];
       zusammen.anfangsbestand = Math.round(Number(zusammen.anfangsbestand)) || 0;
-      zusammen.standdienstPlaetze = Math.min(10, Math.max(1, Number.parseInt(zusammen.standdienstPlaetze, 10) || 3));
+      zusammen.standdienstPlaetze = Math.min(10, Math.max(1, Number.parseInt(zusammen.standdienstPlaetze, 10) || 2));
+      zusammen.reservePlaetze = Math.min(5, Math.max(0, Number.parseInt(zusammen.reservePlaetze, 10) || 0));
       await store.setJSON("einstellungen", zusammen);
       return json(zusammen);
     }
@@ -289,8 +296,9 @@ export default async (request) => {
         const werte = pruefe(def, await request.json());
         if (col === "standdienst") {
           const e = await einstellungen(store);
-          const belegt = (await liste(store, "standdienst")).filter((x) => x.spielId === werte.spielId).length;
-          if (belegt >= e.standdienstPlaetze) return fehler("Alle Plätze für dieses Spiel sind schon vergeben", 409);
+          const belegt = (await liste(store, "standdienst")).filter((x) => x.spielId === werte.spielId && !!x.reserve === werte.reserve).length;
+          const max = werte.reserve ? e.reservePlaetze : e.standdienstPlaetze;
+          if (belegt >= max) return fehler(werte.reserve ? "Der Reserveplatz ist schon vergeben" : "Alle Plätze für dieses Spiel sind schon vergeben", 409);
         }
         const neu = { id: neueId(), ...werte, besitzer, erstellt: new Date().toISOString() };
         await store.setJSON(`${col}/${neu.id}`, neu);

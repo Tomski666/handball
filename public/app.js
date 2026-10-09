@@ -135,7 +135,7 @@ function seiteStart() {
   const trikot = plan.find((p) => !p.erledigt && p.spiel.datum >= heute()) || plan.find((p) => !p.erledigt);
   let standdienstInfo = `<p class="leer">Kein Heimspiel eingetragen.</p>`;
   if (naechstesHeim) {
-    const belegt = Z.standdienst.filter((x) => x.spielId === naechstesHeim.id).length;
+    const belegt = Z.standdienst.filter((x) => x.spielId === naechstesHeim.id && !x.reserve).length;
     const frei = Z.einstellungen.standdienstPlaetze - belegt;
     const artikelOffen = Z.einstellungen.cateringArtikel.filter((a) =>
       Z.catering.filter((c) => c.spielId === naechstesHeim.id && c.artikel === a.name).length < a.bedarf).map((a) => a.name);
@@ -233,12 +233,12 @@ const meinName = () => (document.getElementById("mein-name")?.value || gemerkter
 
 function cateringStatus(s) {
   const e = Z.einstellungen;
-  const dienst = Z.standdienst.filter((x) => x.spielId === s.id).length;
+  const dienst = Z.standdienst.filter((x) => x.spielId === s.id && !x.reserve).length;
   const artikel = e.cateringArtikel.map((a) => ({
     ...a, zugesagt: Z.catering.filter((c) => c.spielId === s.id && c.artikel === a.name).length,
   }));
   const offen = artikel.filter((a) => a.zugesagt < a.bedarf);
-  return { dienst, plaetze: e.standdienstPlaetze, artikel, offen, komplett: dienst >= e.standdienstPlaetze && !offen.length };
+  return { dienst: Math.min(dienst, e.standdienstPlaetze), plaetze: e.standdienstPlaetze, artikel, offen, komplett: dienst >= e.standdienstPlaetze && !offen.length };
 }
 const pill = (ist, soll, text = `${ist}/${soll}`) =>
   `<span class="pill ${ist >= soll ? "ok" : "offen"}">${ist >= soll ? "✓ " : ""}${text}</span>`;
@@ -266,13 +266,22 @@ function seiteCatering() {
 
   const karte = (s) => {
     const st = cateringStatus(s);
-    const dienst = Z.standdienst.filter((x) => x.spielId === s.id).sort((a, b) => a.erstellt.localeCompare(b.erstellt));
+    const alle = Z.standdienst.filter((x) => x.spielId === s.id).sort((a, b) => a.erstellt.localeCompare(b.erstellt));
+    const dienst = alle.filter((x) => !x.reserve);
+    const reserve = alle.filter((x) => x.reserve);
     const frei = Math.max(0, st.plaetze - dienst.length);
+    const reserveFrei = Math.max(0, (e.reservePlaetze ?? 1) - reserve.length);
+    const eintrag = (d) => `<li><span><span class="haken">✓</span><strong>${esc(d.name)}</strong>${d.hinweis ? ` <span class="leise">· ${esc(d.hinweis)}</span>` : ""}</span>
+        ${darfLoeschen(d) ? `<button class="link-knopf" data-aktion="loeschen" data-col="standdienst" data-id="${d.id}" data-frage="Eintrag entfernen?">austragen</button>` : ""}</li>`;
     const plaetze = [
-      ...dienst.map((d) => `<li><span><span class="haken">✓</span><strong>${esc(d.name)}</strong>${d.hinweis ? ` <span class="leise">· ${esc(d.hinweis)}</span>` : ""}</span>
-        ${darfLoeschen(d) ? `<button class="link-knopf" data-aktion="loeschen" data-col="standdienst" data-id="${d.id}" data-frage="Eintrag entfernen?">austragen</button>` : ""}</li>`),
+      ...dienst.map(eintrag),
       ...Array.from({ length: frei }, () => `<li><span class="platz-frei">Platz frei</span>
         <button class="knopf klein" data-aktion="standdienst-ich" data-spiel="${s.id}">Ich übernehme</button></li>`),
+    ].join("");
+    const reservePlaetze = [
+      ...reserve.map(eintrag),
+      ...Array.from({ length: reserveFrei }, () => `<li><span class="platz-frei">Reserve frei</span>
+        <button class="knopf klein zweit" data-aktion="standdienst-ich" data-reserve="1" data-spiel="${s.id}">Als Reserve</button></li>`),
     ].join("");
     const artikel = st.artikel.map((a, i) => {
       const zusagen = Z.catering.filter((c) => c.spielId === s.id && c.artikel === a.name);
@@ -297,7 +306,10 @@ function seiteCatering() {
     return `<details class="karte spiel-karte" data-spiel="${s.id}" id="spiel-${s.id}" ${offeneSpiele.has(s.id) ? "open" : ""}>
       <summary><div class="summary-innen">${spielZeile(s)}<div class="summary-status">${status}</div></div></summary>
       <div class="raster-2 abstand">
-        <div><h3>Standdienst</h3><ul class="liste">${plaetze}</ul></div>
+        <div><h3>Standdienst</h3><ul class="liste">${plaetze}</ul>
+          ${reservePlaetze ? `<h3 class="abstand" style="margin-bottom:2px">Reserve</h3>
+          <p class="leise klein" style="margin:0 0 4px">Springt ein, wenn jemand ausfällt.</p>
+          <ul class="liste">${reservePlaetze}</ul>` : ""}</div>
         <div><h3>Mitbringliste</h3><ul class="liste">${artikel}</ul></div>
       </div>
     </details>`;
@@ -463,6 +475,7 @@ function seiteVerwaltung() {
           <div class="feld"><label>Anfangsbestand (€)</label><input type="text" name="anfangsbestand" inputmode="decimal" value="${(e.anfangsbestand / 100).toFixed(2).replace(".", ",")}"></div>
           <div class="feld"><label>Stichtag</label><input type="date" name="anfangsdatum" value="${esc(e.anfangsdatum)}"></div>
           <div class="feld"><label>Standdienst-Plätze pro Heimspiel</label><input type="number" min="1" max="10" name="standdienstPlaetze" value="${e.standdienstPlaetze}"></div>
+          <div class="feld"><label>Reserveplätze</label><input type="number" min="0" max="5" name="reservePlaetze" value="${e.reservePlaetze ?? 1}"></div>
         </div>
         <label class="abstand">Liga</label><input type="text" name="liga" value="${esc(e.liga)}">
         <label class="abstand">Text zur Mannschaft</label><textarea name="teamText">${esc(e.teamText)}</textarea>
@@ -604,6 +617,7 @@ inhalt.addEventListener("submit", async (ev) => {
           anfangsbestand: inCent(w.anfangsbestand),
           anfangsdatum: w.anfangsdatum,
           standdienstPlaetze: w.standdienstPlaetze,
+          reservePlaetze: w.reservePlaetze,
           liga: w.liga,
           teamText: w.teamText,
           trainingszeiten: zeilen(w.trainingszeiten).map((z) => { const [tag, zeit, halle] = z.split("|").map((x) => (x || "").trim()); return { tag, zeit, halle }; }),
@@ -642,8 +656,8 @@ inhalt.addEventListener("click", async (ev) => {
       lokal("otv_name", name);
       offeneSpiele?.add(el.dataset.spiel);
       el.disabled = true;
-      await api("POST", "/api/c/standdienst", { spielId: el.dataset.spiel, name });
-      await neuLaden("Danke, du bist eingetragen");
+      await api("POST", "/api/c/standdienst", { spielId: el.dataset.spiel, name, reserve: el.dataset.reserve === "1" });
+      await neuLaden(el.dataset.reserve ? "Danke, du bist als Reserve eingetragen" : "Danke, du bist eingetragen");
     } else if (a === "mitbringen-oeffnen") {
       const f = inhalt.querySelector(`form[data-key="${el.dataset.key}"]`);
       f.hidden = !f.hidden;
