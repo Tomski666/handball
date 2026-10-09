@@ -228,54 +228,90 @@ function seiteSpiele() {
   </div>`;
 }
 
+let offeneSpiele = null; // welche Heimspiel-Karten aufgeklappt sind
+const meinName = () => (document.getElementById("mein-name")?.value || gemerkterName()).trim();
+
+function cateringStatus(s) {
+  const e = Z.einstellungen;
+  const dienst = Z.standdienst.filter((x) => x.spielId === s.id).length;
+  const artikel = e.cateringArtikel.map((a) => ({
+    ...a, zugesagt: Z.catering.filter((c) => c.spielId === s.id && c.artikel === a.name).length,
+  }));
+  const offen = artikel.filter((a) => a.zugesagt < a.bedarf);
+  return { dienst, plaetze: e.standdienstPlaetze, artikel, offen, komplett: dienst >= e.standdienstPlaetze && !offen.length };
+}
+const pill = (ist, soll, text = `${ist}/${soll}`) =>
+  `<span class="pill ${ist >= soll ? "ok" : "offen"}">${ist >= soll ? "✓ " : ""}${text}</span>`;
+
 function seiteCatering() {
   const e = Z.einstellungen;
   const liste = heimspiele();
   const k = kommende(liste), v = vergangene(liste);
+  if (offeneSpiele === null) offeneSpiele = new Set(k.length ? [k[0].id] : []);
+
+  const uebersicht = k.length ? `<section class="karte">
+    <h2>Übersicht: Wo wird noch Hilfe gebraucht?</h2>
+    <div class="tabelle-wrap"><table class="uebersicht">
+      <thead><tr><th>Heimspiel</th><th><span class="lang">Standdienst</span><span class="kurz">Dienst</span></th>${e.cateringArtikel.map((a) => `<th class="nur-breit">${esc(a.name)}</th>`).join("")}<th class="nur-schmal">Mitbringen</th></tr></thead>
+      <tbody>${k.map((s) => {
+        const st = cateringStatus(s);
+        return `<tr data-aktion="springen" data-id="${s.id}" title="Zum Spiel springen">
+          <td><strong>${datum(s.datum).toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit" })}</strong><div class="leise klein">${esc(s.gegner)}</div></td>
+          <td>${pill(st.dienst, st.plaetze)}</td>
+          ${st.artikel.map((a) => `<td class="nur-breit">${pill(a.zugesagt, a.bedarf)}</td>`).join("")}
+          <td class="nur-schmal">${pill(st.artikel.length - st.offen.length, st.artikel.length, st.offen.length ? `${st.offen.length} offen` : "komplett")}</td></tr>`;
+      }).join("")}</tbody></table></div>
+    <p class="leise klein" style="margin:8px 0 0">Zeile antippen, um direkt zum Spiel zu springen.</p>
+  </section>` : "";
+
   const karte = (s) => {
+    const st = cateringStatus(s);
     const dienst = Z.standdienst.filter((x) => x.spielId === s.id).sort((a, b) => a.erstellt.localeCompare(b.erstellt));
-    const frei = e.standdienstPlaetze - dienst.length;
+    const frei = Math.max(0, st.plaetze - dienst.length);
     const plaetze = [
-      ...dienst.map((d) => `<li><span><strong>${esc(d.name)}</strong>${d.hinweis ? ` <span class="leise">· ${esc(d.hinweis)}</span>` : ""}</span>
+      ...dienst.map((d) => `<li><span><span class="haken">✓</span><strong>${esc(d.name)}</strong>${d.hinweis ? ` <span class="leise">· ${esc(d.hinweis)}</span>` : ""}</span>
         ${darfLoeschen(d) ? `<button class="link-knopf" data-aktion="loeschen" data-col="standdienst" data-id="${d.id}" data-frage="Eintrag entfernen?">austragen</button>` : ""}</li>`),
-      ...Array.from({ length: Math.max(0, frei) }, () => `<li><span class="platz-frei">frei</span></li>`),
+      ...Array.from({ length: frei }, () => `<li><span class="platz-frei">Platz frei</span>
+        <button class="knopf klein" data-aktion="standdienst-ich" data-spiel="${s.id}">Ich übernehme</button></li>`),
     ].join("");
-    const artikel = e.cateringArtikel.map((a) => {
+    const artikel = st.artikel.map((a, i) => {
       const zusagen = Z.catering.filter((c) => c.spielId === s.id && c.artikel === a.name);
+      const voll = a.zugesagt >= a.bedarf;
+      const key = `${s.id}-${i}`;
       return `<li style="display:block">
-        <div class="bedarf"><strong style="min-width:120px">${esc(a.name)}</strong>
-          <span class="punkte">${Array.from({ length: Math.max(a.bedarf, zusagen.length) }, (_, i) => `<span class="punkt ${i < zusagen.length ? "voll" : ""}"></span>`).join("")}</span>
-          <span class="leise">${zusagen.length} von ${a.bedarf}</span></div>
-        <div>${zusagen.map((c) => `<span class="chip">${esc(c.name)}${c.menge ? " · " + esc(c.menge) : ""}${darfLoeschen(c) ? `<button class="x" title="entfernen" data-aktion="loeschen" data-col="catering" data-id="${c.id}" data-frage="Zusage entfernen?">×</button>` : `<span style="width:6px"></span>`}</span>`).join("")}</div>
+        <div class="artikel-zeile">
+          <div class="artikel-name"><strong>${esc(a.name)}</strong> ${pill(a.zugesagt, a.bedarf)}</div>
+          <button class="${voll ? "link-knopf" : "knopf klein zweit"}" data-aktion="mitbringen-oeffnen" data-key="${key}">${voll ? "+ zusätzlich" : "Ich bringe mit"}</button>
+        </div>
+        ${zusagen.length ? `<div>${zusagen.map((c) => `<span class="chip">${esc(c.name)}${c.menge ? " · " + esc(c.menge) : ""}${darfLoeschen(c) ? `<button class="x" title="entfernen" data-aktion="loeschen" data-col="catering" data-id="${c.id}" data-frage="Zusage entfernen?">×</button>` : `<span style="width:6px"></span>`}</span>`).join("")}</div>` : ""}
+        <form class="zeile mitbringen" data-form="catering" data-spiel="${s.id}" data-key="${key}" hidden>
+          <input type="hidden" name="artikel" value="${esc(a.name)}">
+          <div class="feld"><input type="text" name="menge" maxlength="60" placeholder="Menge, z. B. 1 Blech (optional)" aria-label="Menge"></div>
+          <button class="knopf klein">Zusagen</button>
+        </form>
       </li>`;
     }).join("");
-    return `<section class="karte">
-      <div class="karte-kopf">${spielZeile(s)}</div>
-      <div class="raster-2">
-        <div>
-          <h3>Standdienst <span class="leise">(${dienst.length} von ${e.standdienstPlaetze})</span></h3>
-          <ul class="liste">${plaetze}</ul>
-          ${frei > 0 ? `<form class="zeile abstand" data-form="standdienst" data-spiel="${s.id}">
-            <div class="feld"><label>Name</label><input type="text" name="name" required maxlength="60" value="${esc(gemerkterName())}" placeholder="z. B. Peggy (Mama von Piet)"></div>
-            <div class="feld"><label>Hinweis</label><input type="text" name="hinweis" maxlength="120" placeholder="optional, z. B. erst ab 2. Halbzeit"></div>
-            <button class="knopf">Eintragen</button></form>` : ""}
-        </div>
-        <div>
-          <h3>Mitbringliste</h3>
-          <ul class="liste">${artikel}</ul>
-          <form class="zeile abstand" data-form="catering" data-spiel="${s.id}">
-            <div class="feld" style="flex-basis:130px"><label>Was</label><select name="artikel">${e.cateringArtikel.map((a) => `<option>${esc(a.name)}</option>`).join("")}</select></div>
-            <div class="feld"><label>Name</label><input type="text" name="name" required maxlength="60" value="${esc(gemerkterName())}"></div>
-            <div class="feld" style="flex-basis:120px"><label>Menge</label><input type="text" name="menge" maxlength="60" placeholder="z. B. 1 Blech"></div>
-            <button class="knopf">Zusagen</button></form>
-        </div>
+    const status = st.komplett
+      ? `<span class="pill ok">✓ Alles besetzt</span>`
+      : `${pill(st.dienst, st.plaetze, `Standdienst ${st.dienst}/${st.plaetze}`)} ${!st.offen.length ? "" : st.offen.length === st.artikel.length ? `<span class="pill offen">Mitbringliste offen</span>` : `<span class="pill offen">Offen: ${st.offen.map((a) => esc(a.name)).join(", ")}</span>`}`;
+    return `<details class="karte spiel-karte" data-spiel="${s.id}" id="spiel-${s.id}" ${offeneSpiele.has(s.id) ? "open" : ""}>
+      <summary><div class="summary-innen">${spielZeile(s)}<div class="summary-status">${status}</div></div></summary>
+      <div class="raster-2 abstand">
+        <div><h3>Standdienst</h3><ul class="liste">${plaetze}</ul></div>
+        <div><h3>Mitbringliste</h3><ul class="liste">${artikel}</ul></div>
       </div>
-    </section>`;
+    </details>`;
   };
+
   return `${kopfzeile("Standdienst und Mitbringliste", "Heimspiel-Catering")}
-  <div class="hinweis info">Tragt euch pro Heimspiel für den Standdienst ein und sagt zu, was ihr mitbringt. Eigene Einträge könnt ihr auf diesem Gerät wieder entfernen. Die Einnahmen erscheinen nach dem Spiel im <a href="#/kasse">Kassenbericht</a>.</div>
-  ${k.length ? k.map(karte).join("") : `<section class="karte"><p class="leer">Kein kommendes Heimspiel eingetragen.</p></section>`}
-  ${v.length ? `<details class="abstand"><summary>Vergangene Heimspiele (${v.length})</summary>${v.reverse().map(karte).join("")}</details>` : ""}`;
+  <div class="name-leiste karte">
+    <label for="mein-name">Dein Name für Eintragungen</label>
+    <input id="mein-name" type="text" maxlength="60" value="${esc(gemerkterName())}" placeholder="z. B. Peggy (Mama von Piet)">
+    <p class="leise klein" style="margin:6px 0 0">Wird auf diesem Gerät gemerkt. Eigene Einträge kannst du hier wieder entfernen.</p>
+  </div>
+  ${uebersicht}
+  <div class="abstand">${k.length ? k.map(karte).join("") : `<section class="karte"><p class="leer">Kein kommendes Heimspiel eingetragen.</p></section>`}</div>
+  ${v.length ? `<details class="abstand"><summary>Vergangene Heimspiele (${v.length})</summary><div class="abstand">${[...v].reverse().map(karte).join("")}</div></details>` : ""}`;
 }
 
 function seiteTrikots() {
@@ -537,9 +573,14 @@ inhalt.addEventListener("submit", async (ev) => {
       case "standdienst":
         await api("POST", "/api/c/standdienst", { ...w, spielId: form.dataset.spiel });
         await neuLaden("Danke, du bist eingetragen"); break;
-      case "catering":
-        await api("POST", "/api/c/catering", { ...w, spielId: form.dataset.spiel });
+      case "catering": {
+        const name = meinName();
+        if (!name) { $("#mein-name").focus(); throw new Error("Bitte oben zuerst deinen Namen eintragen"); }
+        lokal("otv_name", name);
+        offeneSpiele?.add(form.dataset.spiel);
+        await api("POST", "/api/c/catering", { ...w, name, spielId: form.dataset.spiel });
         await neuLaden("Danke für die Zusage"); break;
+      }
       case "kader":
         await api("POST", "/api/c/kader", w);
         await neuLaden("Spieler hinzugefügt"); break;
@@ -595,6 +636,22 @@ inhalt.addEventListener("click", async (ev) => {
       if (el.dataset.frage && !confirm(el.dataset.frage)) return;
       await api("DELETE", `/api/c/${el.dataset.col}/${el.dataset.id}`);
       await neuLaden("Entfernt");
+    } else if (a === "standdienst-ich") {
+      const name = meinName();
+      if (!name) { $("#mein-name").focus(); meldung("Bitte oben zuerst deinen Namen eintragen", true); return; }
+      lokal("otv_name", name);
+      offeneSpiele?.add(el.dataset.spiel);
+      el.disabled = true;
+      await api("POST", "/api/c/standdienst", { spielId: el.dataset.spiel, name });
+      await neuLaden("Danke, du bist eingetragen");
+    } else if (a === "mitbringen-oeffnen") {
+      const f = inhalt.querySelector(`form[data-key="${el.dataset.key}"]`);
+      f.hidden = !f.hidden;
+      if (!f.hidden) f.querySelector("input[name=menge]").focus();
+    } else if (a === "springen") {
+      const d = document.getElementById("spiel-" + el.dataset.id);
+      d.open = true;
+      d.scrollIntoView({ behavior: "smooth", block: "start" });
     } else if (a === "kassenfilter") {
       kassenFilter = el.dataset.wert; zeigen();
     } else if (a === "album") {
@@ -615,6 +672,15 @@ inhalt.addEventListener("click", async (ev) => {
   } catch (e) {
     meldung(e.message, true);
   }
+});
+
+inhalt.addEventListener("toggle", (ev) => {
+  const d = ev.target;
+  if (!d.classList?.contains("spiel-karte") || !offeneSpiele) return;
+  if (d.open) offeneSpiele.add(d.dataset.spiel); else offeneSpiele.delete(d.dataset.spiel);
+}, true);
+inhalt.addEventListener("input", (ev) => {
+  if (ev.target.id === "mein-name") lokal("otv_name", ev.target.value.trim());
 });
 
 inhalt.addEventListener("change", async (ev) => {

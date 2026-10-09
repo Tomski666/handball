@@ -72,17 +72,54 @@ const STANDARD_EINSTELLUNGEN = {
   handballNetUrl: "https://www.handball.net/team/95652?season_id=2627&phaseId=17411",
 };
 
+// Spielplan Saison 2026/27 (Regionsoberliga männliche C, Meisterrunde) und Kader nur mit Vornamen.
+// Werden beim ersten Start angelegt bzw. per Datenstand-Abgleich ergänzt, ohne Bestehendes zu löschen.
+const DATENSTAND = 2;
 const STARTDATEN = {
   spiele: [
     { datum: "2026-10-10", zeit: "14:30", gegner: "Bergischer HC III", heim: true, halle: "OTV-Sporthalle", hinweis: "" },
+    { datum: "2026-11-08", zeit: "12:00", gegner: "JSG Eller-Gerresheim C1J", heim: false, halle: "", hinweis: "" },
+    { datum: "2026-11-15", zeit: "15:30", gegner: "DJK Unitas Haan II", heim: true, halle: "OTV-Sporthalle", hinweis: "" },
+    { datum: "2026-11-21", zeit: "14:00", gegner: "Wermelskirchener TV", heim: false, halle: "", hinweis: "Datum bitte prüfen" },
+    { datum: "2026-12-06", zeit: "14:15", gegner: "TSV Aufderhöhe", heim: true, halle: "OTV-Sporthalle", hinweis: "" },
+    { datum: "2026-12-12", zeit: "15:00", gegner: "Luchse Düsseldorf C1J", heim: false, halle: "", hinweis: "" },
+    { datum: "2026-12-20", zeit: "14:15", gegner: "HSG Rade/Herbeck", heim: true, halle: "OTV-Sporthalle", hinweis: "" },
+    { datum: "2027-01-09", zeit: "13:45", gegner: "HSV Solingen-Gräfrath 76", heim: true, halle: "OTV-Sporthalle", hinweis: "" },
+    { datum: "2027-01-24", zeit: "11:30", gegner: "Bergischer HC III", heim: false, halle: "", hinweis: "" },
+    { datum: "2027-01-31", zeit: "14:00", gegner: "JSG Eller-Gerresheim C1J", heim: true, halle: "OTV-Sporthalle", hinweis: "" },
+    { datum: "2027-02-07", zeit: "10:00", gegner: "DJK Unitas Haan II", heim: false, halle: "", hinweis: "" },
+    { datum: "2027-02-14", zeit: "14:15", gegner: "Wermelskirchener TV", heim: true, halle: "OTV-Sporthalle", hinweis: "" },
+    { datum: "2027-02-28", zeit: "12:30", gegner: "TSV Aufderhöhe", heim: false, halle: "", hinweis: "" },
+    { datum: "2027-03-06", zeit: "15:45", gegner: "Luchse Düsseldorf C1J", heim: true, halle: "OTV-Sporthalle", hinweis: "" },
+    { datum: "2027-03-13", zeit: "15:15", gegner: "HSG Rade/Herbeck", heim: false, halle: "", hinweis: "" },
   ],
   trainer: [
     { name: "Christoph Tillmanns", rolle: "Trainer", text: "", reihenfolge: 1 },
     { name: "Maurice Pfeifer", rolle: "Trainer", text: "", reihenfolge: 2 },
-    { name: "Marte Kullenberg", rolle: "Trainerin", text: "", reihenfolge: 3 },
+    { name: "Marte Kullenberg", rolle: "Trainer", text: "", reihenfolge: 3 },
     { name: "Joschka Siegert", rolle: "Trainer", text: "", reihenfolge: 4 },
   ],
-  kader: [{ vorname: "Piet", nummer: "", reihenfolge: 1 }],
+  kader: [
+    { vorname: "Christos", nummer: "", reihenfolge: 1 },
+    { vorname: "Emil", nummer: "3", reihenfolge: 2 },
+    { vorname: "Felix", nummer: "", reihenfolge: 3 },
+    { vorname: "Jasper", nummer: "", reihenfolge: 4 },
+    { vorname: "Jonas", nummer: "", reihenfolge: 5 },
+    { vorname: "Jonathan", nummer: "18", reihenfolge: 6 },
+    { vorname: "Jonne", nummer: "", reihenfolge: 7 },
+    { vorname: "Lasse", nummer: "", reihenfolge: 8 },
+    { vorname: "Levi", nummer: "", reihenfolge: 9 },
+    { vorname: "Lian", nummer: "", reihenfolge: 10 },
+    { vorname: "Mats", nummer: "16", reihenfolge: 11 },
+    { vorname: "Mehyar", nummer: "", reihenfolge: 12 },
+    { vorname: "Mika", nummer: "", reihenfolge: 13 },
+    { vorname: "Nico", nummer: "", reihenfolge: 14 },
+    { vorname: "Paul", nummer: "", reihenfolge: 15 },
+    { vorname: "Piet", nummer: "1", reihenfolge: 16 },
+    { vorname: "Semih", nummer: "", reihenfolge: 17 },
+    { vorname: "Timon", nummer: "", reihenfolge: 18 },
+    { vorname: "Titus", nummer: "", reihenfolge: 19 },
+  ],
 };
 
 // ---------- Hilfen ----------
@@ -128,18 +165,46 @@ async function liste(store, prefix) {
   return eintraege.filter(Boolean);
 }
 
+async function abgleich(store, e) {
+  // Ergänzt Spiele und Kader aus STARTDATEN, ohne vorhandene Einträge zu verändern oder zu löschen
+  const norm = (x) => String(x).toLowerCase().replace(/\s+/g, " ").trim();
+  const spiele = await liste(store, "spiele");
+  for (const sp of STARTDATEN.spiele) {
+    if (!spiele.some((x) => x.datum === sp.datum && norm(x.gegner) === norm(sp.gegner))) {
+      const id = neueId();
+      await store.setJSON(`spiele/${id}`, { id, ...sp, erstellt: new Date().toISOString() });
+    }
+  }
+  const kader = await liste(store, "kader");
+  for (const k of STARTDATEN.kader) {
+    const vorhanden = kader.find((x) => norm(x.vorname) === norm(k.vorname));
+    if (vorhanden) await store.setJSON(`kader/${vorhanden.id}`, { ...vorhanden, nummer: vorhanden.nummer || k.nummer, reihenfolge: k.reihenfolge });
+    else {
+      const id = neueId();
+      await store.setJSON(`kader/${id}`, { id, ...k, erstellt: new Date().toISOString() });
+    }
+  }
+  for (const t of await liste(store, "trainer")) {
+    if (t.rolle === "Trainerin" && t.name.startsWith("Marte")) await store.setJSON(`trainer/${t.id}`, { ...t, rolle: "Trainer" });
+  }
+  const neu = { ...e, datenstand: DATENSTAND };
+  await store.setJSON("einstellungen", neu);
+  return neu;
+}
+
 async function einstellungen(store) {
   const e = await store.get("einstellungen", { type: "json" });
+  if (e && (e.datenstand || 1) < DATENSTAND) return { ...STANDARD_EINSTELLUNGEN, ...(await abgleich(store, e)) };
   if (e) return { ...STANDARD_EINSTELLUNGEN, ...e };
   // Erster Aufruf: Startdaten anlegen
-  await store.setJSON("einstellungen", STANDARD_EINSTELLUNGEN);
+  await store.setJSON("einstellungen", { ...STANDARD_EINSTELLUNGEN, datenstand: DATENSTAND });
   for (const [col, items] of Object.entries(STARTDATEN)) {
     for (const item of items) {
       const id = neueId();
       await store.setJSON(`${col}/${id}`, { id, ...item, erstellt: new Date().toISOString() });
     }
   }
-  return { ...STANDARD_EINSTELLUNGEN };
+  return { ...STANDARD_EINSTELLUNGEN, datenstand: DATENSTAND };
 }
 
 const oeffentlich = (eintrag, besitzer) => {

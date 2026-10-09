@@ -241,3 +241,40 @@ body.rolle-kasse .nur-eltern { display: none; }
 .ausrichten { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 details summary { cursor: pointer; font-weight: 600; color: var(--blau); }
 details[open] summary { margin-bottom: 12px; }
+
+/* Catering: Übersicht und aufklappbare Spielkarten */
+.pill { display: inline-block; font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 99px; white-space: nowrap; }
+.pill.ok { background: var(--gruen-hell); color: var(--gruen); }
+.pill.offen { background: #fdf0dc; color: #a35a00; }
+table.uebersicht td, table.uebersicht th { text-align: center; padding: 8px 6px; }
+table.uebersicht td:first-child, table.uebersicht th:first-child { text-align: left; }
+table.uebersicht tbody tr { cursor: pointer; }
+table.uebersicht tbody tr:hover td { background: var(--blau-hell); }
+.name-leiste { max-width: 520px; margin-bottom: 16px; }
+details.spiel-karte { padding: 0; }
+details.spiel-karte + details.spiel-karte { margin-top: 12px; }
+details.spiel-karte > summary { list-style: none; padding: 16px 20px; color: inherit; font-weight: inherit; position: relative; }
+details.spiel-karte > summary::-webkit-details-marker { display: none; }
+details.spiel-karte > summary::after { content: "▾"; position: absolute; right: 18px; top: 18px; color: var(--blau); font-size: 20px; transition: transform .15s; }
+details.spiel-karte[open] > summary::after { transform: rotate(180deg); }
+details.spiel-karte[open] > summary { margin-bottom: 0; border-bottom: 1px solid var(--grau); }
+details.spiel-karte > .raster-2 { padding: 0 20px 20px; }
+.summary-innen { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding-right: 28px; }
+.summary-status { display: flex; gap: 6px; flex-wrap: wrap; }
+.artikel-zeile { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.artikel-name { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.haken { color: var(--gruen); font-weight: 700; margin-right: 8px; }
+form.mitbringen { margin-top: 8px; }
+form.mitbringen[hidden] { display: none; }
+.nur-schmal { display: none; }
+@media (max-width: 700px) {
+  table.uebersicht .nur-breit { display: none; }
+  table.uebersicht .nur-schmal { display: table-cell; }
+}
+@media (max-width: 700px) { table.uebersicht th { letter-spacing: 0; font-size: 11px; } }
+.kurz { display: none; }
+@media (max-width: 700px) {
+  table.uebersicht .lang { display: none; }
+  table.uebersicht .kurz { display: inline; }
+  table.uebersicht td, table.uebersicht th { padding: 8px 4px; }
+}
