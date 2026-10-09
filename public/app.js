@@ -199,6 +199,32 @@ function kalenderLaden(termine) {
   meldung("Kalenderdatei geladen, bitte öffnen und hinzufügen");
 }
 
+const wochentagLang = (s) => datum(s.datum).toLocaleDateString("de-DE", { weekday: "long" });
+const istBald = (s) => (datum(s.datum) - datum(heute())) / 864e5 < 7;
+
+function fehltKasten(s) {
+  const st = cateringStatus(s);
+  if (st.komplett) return `<div class="fehlt-kasten ok">✓ Alles besetzt, danke!</div>`;
+  const frei = st.plaetze - st.dienst;
+  const wann = istBald(s) ? `Für ${wochentagLang(s)}` : `Für den ${datum(s.datum).toLocaleDateString("de-DE", { day: "numeric", month: "numeric" })}`;
+  return `<div class="fehlt-kasten">
+    <strong>⚠️ ${wann} fehlen noch:</strong>
+    ${frei > 0 ? `<div>👕 ${frei}× Standdienst</div>` : ""}
+    ${st.offen.length ? `<div>🍰 ${st.offen.map((a) => esc(a.name)).join(", ")}</div>` : ""}
+  </div>`;
+}
+
+function uebernaechstesHinweis(heim) {
+  if (!cateringStatus(heim).komplett) return "";
+  const naechste = kommende(heimspiele()).filter((s) => s.id !== heim.id).find((s) => !cateringStatus(s).komplett);
+  if (!naechste) return "";
+  const st = cateringStatus(naechste);
+  const frei = st.plaetze - st.dienst;
+  const mitbringen = st.offen.length === st.artikel.length ? ["die ganze Mitbringliste"] : st.offen.map((a) => a.name);
+  const teile = [frei > 0 ? `${frei}× Standdienst` : "", ...mitbringen].filter(Boolean);
+  return `<p class="danach"><a href="#/catering" data-aktion="springen-catering" data-id="${naechste.id}">Am ${datum(naechste.datum).toLocaleDateString("de-DE", { day: "numeric", month: "numeric" })} gegen ${esc(naechste.gegner)} fehlen auch noch ${esc(teile.join(", "))} ›</a></p>`;
+}
+
 function seiteStart() {
   const e = Z.einstellungen;
   const heim = kommende(heimspiele())[0];
@@ -216,13 +242,14 @@ function seiteStart() {
       <div class="kachel-label">Nächstes Heimspiel</div>
       ${spielZeile(heim)}
       <div class="hero-status">
-        ${st.komplett ? `<p class="gut">✓ Alles besetzt, danke!</p>` : `<p><strong>Es fehlen noch:</strong> ${[frei > 0 ? `${frei}× Standdienst` : "", ...st.offen.map((a) => `${a.bedarf - a.zugesagt}× ${a.name}`)].filter(Boolean).map(esc).join(", ")}</p>`}
+        ${fehltKasten(heim)}
         ${ichDienst ? `<p class="gut">✓ Du hast hier Standdienst${treffzeit(heim) ? `, bitte spätestens um ${treffzeit(heim)} Uhr da sein` : ""}.</p>` : ""}
       </div>
       ${knoepfe.length ? `<div class="hero-aktionen">${knoepfe.join("")}</div>` : ""}
       ${st.offen.length ? `<div class="mitbringen-auswahl" id="mitbringen-auswahl" hidden>
         <p class="leise klein" style="margin:12px 0 6px">Was bringst du mit? Einmal antippen genügt.</p>
         <div class="hero-knoepfe">${artikelKnoepfe}</div></div>` : ""}
+      ${uebernaechstesHinweis(heim)}
       <p class="abstand" style="margin-bottom:0"><a href="#/catering">Alle Heimspiele ansehen</a></p>
     </section>`;
   }
@@ -283,7 +310,7 @@ function seiteSpiele() {
   const e = Z.einstellungen;
   const liste = spieleSortiert();
   const k = kommende(liste), v = vergangene(liste);
-  const zeile = (s) => `<li>${spielZeile(s)}${istAdmin() ? `<button class="knopf klein gefahr" data-aktion="loeschen" data-col="spiele" data-id="${s.id}" data-frage="Spiel löschen? Standdienst-, Catering- und Trikot-Einträge zu diesem Spiel bleiben erhalten, werden aber nicht mehr angezeigt.">Löschen</button>` : ""}</li>`;
+  const zeile = (s) => `<li>${spielZeile(s)}${istAdmin() ? `<span class="ausrichten"><button class="knopf klein zweit" data-aktion="spiel-bearbeiten" data-id="${s.id}">Bearbeiten</button><button class="knopf klein gefahr" data-aktion="loeschen" data-col="spiele" data-id="${s.id}" data-frage="Spiel löschen? Standdienst-, Catering- und Trikot-Einträge zu diesem Spiel bleiben erhalten, werden aber nicht mehr angezeigt.">Löschen</button></span>` : ""}</li>`;
   return `${kopfzeile("Was passiert wann und wo?", "Spiele")}
   <div class="raster-2">
     <section class="karte">
@@ -299,15 +326,17 @@ function seiteSpiele() {
       ${k.length ? `<ul class="liste">${k.map(zeile).join("")}</ul>` : `<p class="leer">Keine kommenden Spiele eingetragen.</p>`}
       ${v.length ? `<details class="abstand"><summary>Vergangene Spiele (${v.length})</summary><ul class="liste">${v.reverse().map(zeile).join("")}</ul></details>` : ""}
       <div class="nur-kasse abstand">
-        <h3>Spiel hinzufügen</h3>
+        <h3 id="spiel-titel">Spiel hinzufügen</h3>
         <form class="zeile" data-form="spiel">
+          <input type="hidden" name="id">
           <div class="feld"><label>Datum</label><input type="date" name="datum" required></div>
           <div class="feld" style="flex-basis:110px"><label>Anwurf</label><input type="time" name="zeit"></div>
           <div class="feld"><label>Gegner</label><input type="text" name="gegner" required maxlength="80"></div>
           <div class="feld"><label>Halle</label><input type="text" name="halle" maxlength="80"></div>
           <div class="feld" style="flex-basis:130px"><label>Art</label><select name="heim"><option value="true">Heimspiel</option><option value="false">Auswärts</option></select></div>
           <div class="feld" style="flex-basis:100%"><label>Hinweis (optional)</label><input type="text" name="hinweis" maxlength="300" placeholder="z. B. Treffpunkt 13:45 Uhr"></div>
-          <button class="knopf">Hinzufügen</button>
+          <button class="knopf">Speichern</button>
+          <button class="knopf zweit" type="reset" data-aktion="spiel-abbrechen">Leeren</button>
         </form>
       </div>
     </section>
@@ -989,6 +1018,7 @@ const inCent = (s) => Math.round(Number(String(s).replace(/\./g, "").replace(","
 const zeilen = (s) => String(s).split("\n").map((z) => z.trim()).filter(Boolean);
 
 async function neuLaden(text) {
+  zuletztGeladen = Date.now();
   await laden();
   zeigen();
   if (text) meldung(text);
@@ -1005,9 +1035,13 @@ inhalt.addEventListener("submit", async (ev) => {
   try {
     if (w.name && ["standdienst", "catering", "galerie"].includes(art)) lokal("otv_name", w.name);
     switch (art) {
-      case "spiel":
-        await api("POST", "/api/c/spiele", { ...w, heim: w.heim === "true" });
-        await neuLaden("Spiel hinzugefügt"); break;
+      case "spiel": {
+        const daten = { ...w, heim: w.heim === "true" };
+        delete daten.id;
+        if (w.id) await api("PUT", "/api/c/spiele/" + w.id, daten);
+        else await api("POST", "/api/c/spiele", daten);
+        await neuLaden(w.id ? "Spiel geändert, alle Einträge bleiben erhalten" : "Spiel hinzugefügt"); break;
+      }
       case "standdienst":
         await api("POST", "/api/c/standdienst", { ...w, spielId: form.dataset.spiel });
         await neuLaden("Danke, du bist eingetragen"); break;
@@ -1115,6 +1149,21 @@ inhalt.addEventListener("click", async (ev) => {
       el.disabled = true;
       await api("POST", "/api/c/standdienst", { spielId: el.dataset.spiel, name, reserve: el.dataset.reserve === "1" });
       await neuLaden(el.dataset.reserve ? "Danke, du bist als Reserve eingetragen" : "Danke, du bist eingetragen");
+    } else if (a === "springen-catering") {
+      ev.preventDefault();
+      if (offeneSpiele === null) offeneSpiele = new Set();
+      offeneSpiele.add(el.dataset.id);
+      location.hash = "#/catering";
+      setTimeout(() => document.getElementById("spiel-" + el.dataset.id)?.scrollIntoView({ behavior: "smooth", block: "start" }), 150);
+    } else if (a === "spiel-bearbeiten") {
+      const sp = Z.spiele.find((x) => x.id === el.dataset.id);
+      const f = inhalt.querySelector('form[data-form="spiel"]');
+      for (const k of ["id", "datum", "zeit", "gegner", "halle", "hinweis"]) f.elements[k].value = sp[k] || "";
+      f.elements.heim.value = sp.heim ? "true" : "false";
+      $("#spiel-titel").textContent = `Spiel ändern: ${sp.gegner}`;
+      f.scrollIntoView({ behavior: "smooth", block: "center" });
+    } else if (a === "spiel-abbrechen") {
+      setTimeout(() => { $("#spiel-titel").textContent = "Spiel hinzufügen"; inhalt.querySelector('form[data-form="spiel"]').elements.id.value = ""; });
     } else if (a === "mitbringen-liste") {
       const box = $("#mitbringen-auswahl");
       box.hidden = !box.hidden;
@@ -1312,6 +1361,23 @@ $("#abmelden").addEventListener("click", async () => {
   location.href = "/login.html";
 });
 window.addEventListener("hashchange", () => { zeigen(); window.scrollTo(0, 0); });
+
+// Aktuelle Daten holen, wenn die Seite wieder in den Vordergrund kommt (z. B. App vom Startbildschirm)
+let zuletztGeladen = Date.now();
+async function stillAktualisieren() {
+  if (document.hidden || Date.now() - zuletztGeladen < 60_000) return;
+  // Nicht stören, wenn gerade ein Fenster offen ist oder jemand tippt
+  if (document.querySelector(".lightbox") || ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) return;
+  try {
+    await laden();
+    zuletztGeladen = Date.now();
+    const y = window.scrollY;
+    zeigen();
+    window.scrollTo(0, y);
+  } catch { /* offline: alten Stand behalten */ }
+}
+document.addEventListener("visibilitychange", stillAktualisieren);
+window.addEventListener("focus", stillAktualisieren);
 
 laden().then(() => {
   zeigen();

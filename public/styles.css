@@ -365,3 +365,9 @@ input[type=file] { max-width: 100%; width: 100%; font-size: 15px; }
 .hero-aktionen .knopf { white-space: normal; }
 .mitbringen-auswahl[hidden] { display: none; }
 .mitbringen-auswahl .hero-knoepfe { margin-top: 0; }
+
+.fehlt-kasten { background: #fdf0dc; border-left: 5px solid #e08a00; border-radius: 8px; padding: 12px 14px; margin-top: 14px; font-size: 17px; line-height: 1.6; }
+.fehlt-kasten strong { display: block; color: #8a4b00; margin-bottom: 2px; }
+.fehlt-kasten.ok { background: var(--gruen-hell); border-left-color: var(--gruen); color: var(--gruen); font-weight: 700; }
+.danach { margin: 12px 0 0; font-size: 15px; }
+.danach a { color: #8a4b00; font-weight: 600; text-decoration: none; }
