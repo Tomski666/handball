@@ -1,0 +1,10 @@
+{
+  "name": "otv-c-jugend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Passwortgeschützte Elternseite der männlichen C-Jugend des Ohligser TV",
+  "dependencies": {
+    "@netlify/blobs": "^11.1.4"
+  }
+}
