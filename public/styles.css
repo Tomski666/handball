@@ -355,3 +355,8 @@ input[type=file] { max-width: 100%; width: 100%; font-size: 15px; }
   .nav { flex-wrap: nowrap; }
   .nav a { padding: 8px 7px; font-size: 12.5px; letter-spacing: .02em; }
 }
+
+.info-zeile { background: var(--blau-hell); border-radius: 8px; padding: 8px 10px; font-size: 14px; margin: 0 0 6px; }
+.artikel-hinweis { flex-basis: 100%; margin-top: -4px; }
+.hero-knoepfe .knopf small { display: block; font-weight: 500; font-size: 12px; opacity: .8; margin-top: 2px; }
+.hero-knoepfe .knopf { flex-direction: column; }

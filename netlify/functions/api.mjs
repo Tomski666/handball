@@ -72,12 +72,14 @@ const STANDARD_EINSTELLUNGEN = {
   reservePlaetze: 1,
   galerieAktiv: false,
   cateringArtikel: [
-    { name: "Kuchen", bedarf: 2 },
-    { name: "Muffins", bedarf: 2 },
-    { name: "Laugengebäck", bedarf: 1 },
-    { name: "Kaffee", bedarf: 1 },
-    { name: "Milch", bedarf: 2 },
+    { name: "Kuchen", bedarf: 2, hinweis: "1 Blech oder 1 großer Kuchen" },
+    { name: "Muffins", bedarf: 2, hinweis: "ca. 12 Stück" },
+    { name: "Laugengebäck", bedarf: 1, hinweis: "ca. 15 Stück" },
+    { name: "Kaffee", bedarf: 1, hinweis: "1 Packung gemahlen (500 g)" },
+    { name: "Milch", bedarf: 2, hinweis: "1 Liter H-Milch" },
   ],
+  standdienstVorlauf: 60, // Minuten vor Anpfiff
+  standdienstInfo: "Die Kinder sind ebenfalls eine Stunde vor Anpfiff da. Aufgaben: Stand aufbauen, verkaufen und kassieren, am Ende abbauen.",
   kassenKategorien: ["Heimspiel-Catering", "Getränke OTV", "Einkauf Catering", "Mannschaftsfeier", "Geschenke", "Turnier/Fahrten", "Sonstiges"],
   kassenKanaele: ["Bar", "PayPal", "Überweisung", "Karte/SumUp"],
   widgetToken: "",
@@ -86,7 +88,7 @@ const STANDARD_EINSTELLUNGEN = {
 
 // Spielplan Saison 2026/27 (Regionsoberliga männliche C, Meisterrunde) und Kader nur mit Vornamen.
 // Werden beim ersten Start angelegt bzw. per Datenstand-Abgleich ergänzt, ohne Bestehendes zu löschen.
-const DATENSTAND = 3;
+const DATENSTAND = 4;
 const STARTDATEN = {
   spiele: [
     { datum: "2026-10-10", zeit: "14:30", gegner: "Bergischer HC III", heim: true, halle: "OTV-Sporthalle", hinweis: "" },
@@ -200,6 +202,12 @@ async function abgleich(store, e) {
     if (t.rolle === "Trainerin" && t.name.startsWith("Marte")) await store.setJSON(`trainer/${t.id}`, { ...t, rolle: "Trainer" });
   }
   const neu = { ...e, datenstand: DATENSTAND };
+  // Datenstand 4: Mengenhinweise für die Mitbringliste ergänzen, wo noch keine stehen
+  if ((e.datenstand || 1) < 4 && Array.isArray(e.cateringArtikel)) {
+    neu.cateringArtikel = e.cateringArtikel.map((a) => ({
+      ...a, hinweis: a.hinweis ?? (STANDARD_EINSTELLUNGEN.cateringArtikel.find((x) => x.name === a.name)?.hinweis || ""),
+    }));
+  }
   // Datenstand 3: Standdienst mit 2 festen Plätzen und 1 Reserveplatz
   if ((e.datenstand || 1) < 3) {
     if (!e.standdienstPlaetze || e.standdienstPlaetze === 3) neu.standdienstPlaetze = 2;
@@ -292,6 +300,8 @@ export default async (request) => {
       zusammen.anfangsbestand = Math.round(Number(zusammen.anfangsbestand)) || 0;
       zusammen.standdienstPlaetze = Math.min(10, Math.max(1, Number.parseInt(zusammen.standdienstPlaetze, 10) || 2));
       zusammen.galerieAktiv = zusammen.galerieAktiv === true;
+      zusammen.standdienstVorlauf = Math.min(180, Math.max(0, Number.parseInt(zusammen.standdienstVorlauf, 10) || 0));
+      zusammen.standdienstInfo = String(zusammen.standdienstInfo || "").slice(0, 400);
       zusammen.reservePlaetze = Math.min(5, Math.max(0, Number.parseInt(zusammen.reservePlaetze, 10) || 0));
       await store.setJSON("einstellungen", zusammen);
       return json(zusammen);

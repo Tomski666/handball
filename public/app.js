@@ -115,6 +115,14 @@ function spielZeile(s) {
     ${s.hinweis ? `<div class="klein">${esc(s.hinweis)}</div>` : ""}
   </div></div>`;
 }
+// Uhrzeit, zu der der Standdienst da sein soll (Anpfiff minus Vorlauf)
+function treffzeit(s) {
+  if (!s.zeit) return "";
+  const [h, m] = s.zeit.split(":").map(Number);
+  const min = Math.max(0, h * 60 + m - (Z.einstellungen.standdienstVorlauf ?? 60));
+  return `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+}
+const AUSTRAGEN_HINWEIS = "Austragen geht nur auf dem Handy, mit dem du dich eingetragen hast. Sonst kurz in die WhatsApp-Gruppe schreiben.";
 const kopfzeile = (unter, titel) => `<p class="unterzeile">${unter}</p><h1>${titel}</h1>`;
 
 // ---------- Seiten ----------
@@ -137,7 +145,7 @@ function meineTermine() {
   const kommt = (sp) => sp && sp.datum >= heute();
   for (const d of Z.standdienst.filter((x) => x.eigen)) {
     const sp = spiel(d.spielId);
-    if (kommt(sp)) t.push({ key: "s" + d.id, spiel: sp, text: d.reserve ? "Du bist Reserve beim Standdienst" : "Du hast Standdienst", link: "#/catering" });
+    if (kommt(sp)) t.push({ key: "s" + d.id, spiel: sp, text: d.reserve ? "Du bist Reserve beim Standdienst" : `Du hast Standdienst${treffzeit(sp) ? ` (spätestens ${treffzeit(sp)} Uhr da sein)` : ""}`, standdienst: true, link: "#/catering" });
   }
   for (const c of Z.catering.filter((x) => x.eigen)) {
     const sp = spiel(c.spielId);
@@ -170,9 +178,10 @@ function kalenderLaden(termine) {
     const titel = `${t.text.split(" · ")[0]}: ${s.heim ? "OTV gegen " + s.gegner : s.gegner + " gegen OTV"}`;
     z.push("BEGIN:VEVENT", `UID:${t.key}@otv-c-jugend`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, "").slice(0, 15)}Z`);
     if (s.zeit) {
-      const [h, m] = s.zeit.split(":").map(Number);
+      const start = t.standdienst && treffzeit(s) ? treffzeit(s) : s.zeit;
+      const [h, m] = start.split(":").map(Number);
       const ende = `${String(Math.min(23, h + 2)).padStart(2, "0")}${String(m).padStart(2, "0")}00`;
-      z.push(`DTSTART:${f(s.datum)}T${s.zeit.replace(":", "")}00`, `DTEND:${f(s.datum)}T${ende}`);
+      z.push(`DTSTART:${f(s.datum)}T${start.replace(":", "")}00`, `DTEND:${f(s.datum)}T${ende}`);
     } else {
       z.push(`DTSTART;VALUE=DATE:${f(s.datum)}`);
     }
@@ -205,13 +214,13 @@ function seiteStart() {
     const frei = st.plaetze - st.dienst;
     const knoepfe = [];
     if (frei > 0 && !ichDienst) knoepfe.push(`<button class="knopf gross" data-aktion="standdienst-ich" data-spiel="${heim.id}">🙋 Ich übernehme Standdienst</button>`);
-    for (const a of st.offen) knoepfe.push(`<button class="knopf zweit gross" data-aktion="bringe-schnell" data-spiel="${heim.id}" data-artikel="${esc(a.name)}">Ich bringe ${esc(a.name)}</button>`);
+    for (const a of st.offen) knoepfe.push(`<button class="knopf zweit gross" data-aktion="bringe-schnell" data-spiel="${heim.id}" data-artikel="${esc(a.name)}">Ich bringe ${esc(a.name)}${a.hinweis ? `<small>${esc(a.hinweis)}</small>` : ""}</button>`);
     hero = `<section class="karte hero">
       <div class="kachel-label">Nächstes Heimspiel</div>
       ${spielZeile(heim)}
       <div class="hero-status">
         ${st.komplett ? `<p class="gut">✓ Alles besetzt, danke!</p>` : `<p><strong>Es fehlen noch:</strong> ${[frei > 0 ? `${frei}× Standdienst` : "", ...st.offen.map((a) => `${a.bedarf - a.zugesagt}× ${a.name}`)].filter(Boolean).map(esc).join(", ")}</p>`}
-        ${ichDienst ? `<p class="gut">✓ Du hast hier Standdienst.</p>` : ""}
+        ${ichDienst ? `<p class="gut">✓ Du hast hier Standdienst${treffzeit(heim) ? `, bitte spätestens um ${treffzeit(heim)} Uhr da sein` : ""}.</p>` : ""}
       </div>
       ${knoepfe.length ? `<div class="hero-knoepfe">${knoepfe.join("")}</div>` : ""}
       <p class="abstand" style="margin-bottom:0"><a href="#/catering">Alle Heimspiele ansehen</a></p>
@@ -225,7 +234,7 @@ function seiteStart() {
     ${termine.length ? `<ul class="liste">${termine.map((t) => `<li>
         <a class="termin" href="${t.link}">${datumBlock(t.spiel.datum)}<span><strong>${esc(t.text)}</strong>
           <span class="leise klein">${t.spiel.zeit ? esc(t.spiel.zeit) + " Uhr · " : ""}${t.spiel.heim ? "gegen " : "bei "}${esc(t.spiel.gegner)}</span></span></a>
-        <button class="knopf zweit klein" data-aktion="kalender" data-key="${t.key}" aria-label="In den Kalender">📅</button></li>`).join("")}</ul>`
+        <button class="knopf zweit klein" data-aktion="kalender" data-key="${t.key}" aria-label="In den Kalender">📅 In Kalender</button></li>`).join("")}</ul>`
       : `<p class="leer">Du hast dich noch nirgends eingetragen. Oben geht es mit einem Klick.</p>`}
   </section>`;
 
@@ -372,7 +381,7 @@ function seiteCatering() {
       const key = `${s.id}-${i}`;
       return `<li style="display:block">
         <div class="artikel-zeile">
-          <div class="artikel-name"><strong>${esc(a.name)}</strong> ${pill(a.zugesagt, a.bedarf)}</div>
+          <div class="artikel-name"><strong>${esc(a.name)}</strong> ${pill(a.zugesagt, a.bedarf)}${a.hinweis ? `<span class="leise klein artikel-hinweis">je ${esc(a.hinweis)}</span>` : ""}</div>
           <button class="${voll ? "link-knopf" : "knopf klein zweit"}" data-aktion="mitbringen-oeffnen" data-key="${key}">${voll ? "+ zusätzlich" : "Ich bringe mit"}</button>
         </div>
         ${zusagen.length ? `<div>${zusagen.map((c) => `<span class="chip">${esc(c.name)}${c.menge ? " · " + esc(c.menge) : ""}${darfLoeschen(c) ? `<button class="x" title="entfernen" data-aktion="loeschen" data-col="catering" data-id="${c.id}" data-frage="Zusage entfernen?">×</button>` : `<span style="width:6px"></span>`}</span>`).join("")}</div>` : ""}
@@ -389,7 +398,9 @@ function seiteCatering() {
     return `<details class="karte spiel-karte" data-spiel="${s.id}" id="spiel-${s.id}" ${offeneSpiele.has(s.id) ? "open" : ""}>
       <summary><div class="summary-innen">${spielZeile(s)}<div class="summary-status">${status}</div></div></summary>
       <div class="raster-2 abstand">
-        <div><h3>Standdienst</h3><ul class="liste">${plaetze}</ul>
+        <div><h3>Standdienst</h3>
+          <p class="info-zeile">⏰ ${treffzeit(s) ? `Bitte spätestens um <strong>${treffzeit(s)} Uhr</strong> da sein.` : `Bitte mindestens ${Z.einstellungen.standdienstVorlauf ?? 60} Minuten vor Anpfiff da sein.`} ${esc(Z.einstellungen.standdienstInfo || "")}</p>
+          <ul class="liste">${plaetze}</ul>
           ${reservePlaetze ? `<h3 class="abstand" style="margin-bottom:2px">Reserve</h3>
           <p class="leise klein" style="margin:0 0 4px">Springt ein, wenn jemand ausfällt.</p>
           <ul class="liste">${reservePlaetze}</ul>` : ""}</div>
@@ -401,6 +412,7 @@ function seiteCatering() {
   };
 
   return `${kopfzeile("Standdienst und Mitbringliste", "Heimspiel-Catering")}
+  <div class="hinweis info">${AUSTRAGEN_HINWEIS}</div>
   ${uebersicht}
   <div class="abstand">${k.length ? k.map(karte).join("") : `<section class="karte"><p class="leer">Kein kommendes Heimspiel eingetragen.</p></section>`}</div>
   ${v.length ? `<details class="abstand"><summary>Vergangene Heimspiele (${v.length})</summary><div class="abstand">${[...v].reverse().map(karte).join("")}</div></details>` : ""}`;
@@ -421,7 +433,7 @@ function seiteTrikots() {
         <td><strong>${esc(p.familie)}</strong>${p.getauscht ? ` <span class="leise klein">(getauscht)</span>` : ""}</td>
         <td><input type="checkbox" aria-label="erledigt" data-aktion="trikot-erledigt" data-id="${p.spiel.id}" ${p.erledigt ? "checked" : ""}></td>
         <td><select class="klein" data-aktion="trikot-tausch" data-id="${p.spiel.id}" aria-label="Familie ändern" style="padding:5px 8px;font-size:13px;width:auto">
-          <option value="">${p.getauscht ? "Reihenfolge wiederherstellen" : "tauschen mit …"}</option>
+          <option value="">${p.getauscht ? "Ursprüngliche Familie" : "Familie ändern …"}</option>
           ${fam.filter((f) => f !== p.familie).map((f) => `<option>${esc(f)}</option>`).join("")}</select></td>
       </tr>`).join("")}</tbody></table></div>`
       : `<p class="leer">Noch keine Spiele eingetragen.</p>`}
@@ -477,7 +489,7 @@ function seiteKasse() {
     <section class="karte"><div class="kachel-label">Ausgaben</div><div class="zahl-gross" style="color:var(--rot)">${euro(aus)}</div></section>
   </div>
   <div class="raster-2 abstand">
-    <section class="karte"><h2>Einnahmen nach Kanal</h2>${balken(gruppe("einnahme", "kanal"), ein, "var(--gruen)")}</section>
+    <section class="karte"><h2>Einnahmen nach Zahlungsart</h2>${balken(gruppe("einnahme", "kanal"), ein, "var(--gruen)")}</section>
     <section class="karte"><h2>Ausgaben nach Zweck</h2>${balken(gruppe("ausgabe", "kategorie"), aus, "var(--rot)")}</section>
   </div>
 
@@ -492,7 +504,7 @@ function seiteKasse() {
       <div class="feld" style="flex-basis:120px"><label>Betrag (€)</label><input type="text" name="betrag" inputmode="decimal" required placeholder="0,00"></div>
       <div class="feld" style="flex-basis:260px"><label>Zweck</label><input type="text" name="zweck" required maxlength="120" placeholder="z. B. Catering Heimspiel gegen BHC III"></div>
       <div class="feld"><label>Kategorie</label><select name="kategorie">${opt(e.kassenKategorien)}</select></div>
-      <div class="feld"><label>Kanal</label><select name="kanal">${opt(e.kassenKanaele)}</select></div>
+      <div class="feld"><label>bezahlt per</label><select name="kanal">${opt(e.kassenKanaele)}</select></div>
       <div class="feld"><label>Spiel (optional)</label><select name="spielId"><option value="">–</option>${spieleSortiert().map((s) => `<option value="${s.id}">${datumKurz(s.datum)} ${esc(s.gegner)}</option>`).join("")}</select></div>
       <div class="feld"><label>Beleg / Notiz</label><input type="text" name="beleg" maxlength="120" placeholder="z. B. Kassenbon Rewe"></div>
       <button class="knopf">Speichern</button>
@@ -507,7 +519,7 @@ function seiteKasse() {
         <button class="knopf zweit klein" data-aktion="csv">CSV-Export</button>
       </div></div>
     ${gefiltert.length ? `<div class="tabelle-wrap"><table>
-      <thead><tr><th>Datum</th><th>Zweck</th><th>Kanal</th><th class="betrag">Betrag</th><th class="betrag">Stand</th><th class="nur-kasse"></th></tr></thead>
+      <thead><tr><th>Datum</th><th>Zweck</th><th>Bezahlt per</th><th class="betrag">Betrag</th><th class="betrag">Stand</th><th class="nur-kasse"></th></tr></thead>
       <tbody>${gefiltert.map((b) => `<tr>
         <td>${datumKurz(b.datum)}</td>
         <td><strong>${esc(b.zweck)}</strong><div class="leise klein">${esc(b.kategorie)}${b.spielId && spielName(b.spielId) ? " · " + esc(spielName(b.spielId)) : ""}${b.beleg ? " · " + esc(b.beleg) : ""}</div></td>
@@ -584,6 +596,10 @@ function seiteVerwaltung() {
           <div class="feld"><label>Standdienst-Plätze pro Heimspiel</label><input type="number" min="1" max="10" name="standdienstPlaetze" value="${e.standdienstPlaetze}"></div>
           <div class="feld"><label>Reserveplätze</label><input type="number" min="0" max="5" name="reservePlaetze" value="${e.reservePlaetze ?? 1}"></div>
         </div>
+        <div class="ausrichten abstand">
+          <div class="feld" style="flex-basis:200px"><label>Standdienst da sein (Minuten vor Anpfiff)</label><input type="number" min="0" max="180" name="standdienstVorlauf" value="${e.standdienstVorlauf ?? 60}"></div>
+        </div>
+        <label>Infotext Standdienst</label><textarea name="standdienstInfo" style="min-height:70px" maxlength="400">${esc(e.standdienstInfo || "")}</textarea>
         <label class="schalter abstand"><input type="checkbox" name="galerieAktiv" ${e.galerieAktiv ? "checked" : ""}> Galerie für Eltern freigeben</label>
         <div>
         </div>
@@ -591,8 +607,8 @@ function seiteVerwaltung() {
         <label class="abstand">Text zur Mannschaft</label><textarea name="teamText">${esc(e.teamText)}</textarea>
         <label class="abstand">Trainingszeiten (je Zeile: Tag | Uhrzeit | Halle)</label>
         <textarea name="trainingszeiten" style="min-height:70px">${esc(e.trainingszeiten.map((t) => `${t.tag} | ${t.zeit} | ${t.halle}`).join("\n"))}</textarea>
-        <label class="abstand">Mitbringliste (je Zeile: Artikel | Anzahl benötigt)</label>
-        <textarea name="cateringArtikel" style="min-height:110px">${esc(e.cateringArtikel.map((a) => `${a.name} | ${a.bedarf}`).join("\n"))}</textarea>
+        <label class="abstand">Mitbringliste (je Zeile: Artikel | Anzahl | Menge je Zusage)</label>
+        <textarea name="cateringArtikel" style="min-height:110px">${esc(e.cateringArtikel.map((a) => `${a.name} | ${a.bedarf}${a.hinweis ? " | " + a.hinweis : ""}`).join("\n"))}</textarea>
         <label class="abstand">Kassen-Kategorien (eine pro Zeile)</label>
         <textarea name="kassenKategorien" style="min-height:90px">${esc(e.kassenKategorien.join("\n"))}</textarea>
         <label class="abstand">Zahlungskanäle (einer pro Zeile)</label>
@@ -679,7 +695,7 @@ function cateringText(s) {
   const frei = Math.max(0, e.standdienstPlaetze - dienst.length);
   const z = [`🤾 Heimspiel ${wtDatum(s)}${s.zeit ? " " + s.zeit + " Uhr" : ""} gegen ${s.gegner}`];
   if (s.halle) z.push(`📍 ${s.halle}`);
-  z.push("", "👕 Standdienst:");
+  z.push("", `👕 Standdienst${treffzeit(s) ? ` (bitte spätestens um ${treffzeit(s)} Uhr da sein)` : ""}:`);
   z.push(dienst.length ? `${frei ? "" : "✅ "}${dienst.join(", ")}` : "");
   if (frei) z.push(`❗ noch ${frei} ${frei === 1 ? "Platz" : "Plätze"} frei`);
   if ((e.reservePlaetze ?? 1) > 0) z.push(reserve.length ? `Reserve: ${reserve.join(", ")}` : "Reserve: noch frei");
@@ -688,7 +704,8 @@ function cateringText(s) {
     const zus = Z.catering.filter((c) => c.spielId === s.id && c.artikel === a.name);
     const wer = zus.map((c) => (c.menge ? `${c.menge} von ` : "") + c.name).join(", ");
     const fehlt = a.bedarf - zus.length;
-    z.push(fehlt > 0 ? `❗ ${a.name}: ${wer ? wer + ", " : ""}noch ${fehlt} gesucht` : `✅ ${a.name}: ${wer}`);
+    const name = a.hinweis ? `${a.name} (je ${a.hinweis})` : a.name;
+    z.push(fehlt > 0 ? `❗ ${name}: ${wer ? wer + ", " : ""}noch ${fehlt} gesucht` : `✅ ${a.name}: ${wer}`);
   }
   z.push("", `Eintragen: ${location.origin}/#/catering`);
   return z.filter((x, i, arr) => !(x === "" && arr[i - 1] === "")).join("\n").replace(/Standdienst:\n\n/, "Standdienst:\n");
@@ -849,7 +866,7 @@ function seiteFahrten() {
     </details>`;
   };
   return `${kopfzeile("Gemeinsam zu den Auswärtsspielen", "Fahrgemeinschaften")}
-  <div class="hinweis info">Wer fährt, bietet Plätze an. Wer mitfahren möchte, trägt sein Kind bei einer Fahrt ein.</div>
+  <div class="hinweis info">Wer fährt, bietet Plätze an. Wer mitfahren möchte, trägt sein Kind bei einer Fahrt ein. ${AUSTRAGEN_HINWEIS}</div>
   ${k.length ? k.map(karte).join("") : `<section class="karte"><p class="leer">Kein kommendes Auswärtsspiel eingetragen.</p></section>`}
   ${v.length ? `<details class="abstand"><summary>Vergangene Auswärtsspiele (${v.length})</summary><div class="abstand">${[...v].reverse().map(karte).join("")}</div></details>` : ""}`;
 }
@@ -1064,10 +1081,12 @@ inhalt.addEventListener("submit", async (ev) => {
           standdienstPlaetze: w.standdienstPlaetze,
           reservePlaetze: w.reservePlaetze,
           galerieAktiv: w.galerieAktiv === "on",
+          standdienstVorlauf: w.standdienstVorlauf,
+          standdienstInfo: w.standdienstInfo,
           liga: w.liga,
           teamText: w.teamText,
           trainingszeiten: zeilen(w.trainingszeiten).map((z) => { const [tag, zeit, halle] = z.split("|").map((x) => (x || "").trim()); return { tag, zeit, halle }; }),
-          cateringArtikel: zeilen(w.cateringArtikel).map((z) => { const [name, bedarf] = z.split("|").map((x) => (x || "").trim()); return { name, bedarf: Math.max(1, parseInt(bedarf, 10) || 1) }; }),
+          cateringArtikel: zeilen(w.cateringArtikel).map((z) => { const [name, bedarf] = z.split("|").map((x) => (x || "").trim()); return { name, bedarf: Math.max(1, parseInt(bedarf, 10) || 1), hinweis: (z.split("|")[2] || "").trim() }; }),
           kassenKategorien: zeilen(w.kassenKategorien),
           kassenKanaele: zeilen(w.kassenKanaele),
           widgetToken: w.widgetToken.trim(),
@@ -1173,7 +1192,7 @@ inhalt.addEventListener("change", async (ev) => {
 function csvExport() {
   const e = Z.einstellungen;
   let lauf = e.anfangsbestand;
-  const zeilenCsv = [["Datum", "Art", "Betrag", "Zweck", "Kategorie", "Kanal", "Spiel", "Beleg", "Kassenstand"]];
+  const zeilenCsv = [["Datum", "Art", "Betrag", "Zweck", "Kategorie", "Bezahlt per", "Spiel", "Beleg", "Kassenstand"]];
   zeilenCsv.push([e.anfangsdatum, "Anfangsbestand", "", "", "", "", "", "", (lauf / 100).toFixed(2).replace(".", ",")]);
   for (const b of kassenBuchungen()) {
     lauf += b.art === "einnahme" ? b.betrag : -b.betrag;
