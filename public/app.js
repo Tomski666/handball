@@ -122,6 +122,18 @@ function treffzeit(s) {
   const min = Math.max(0, h * 60 + m - (Z.einstellungen.standdienstVorlauf ?? 60));
   return `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
 }
+// grober Vorschlag: 45 Minuten Fahrt vor der Treffzeit
+function abfahrtVorschlag(s) {
+  const t = treffzeit(s);
+  if (!t) return "";
+  const [h, m] = t.split(":").map(Number);
+  const min = Math.max(0, h * 60 + m - 45);
+  return `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+}
+function hallenZeile(s) {
+  const t = treffzeit(s);
+  return `<p class="info-zeile">⏰ ${t ? `Die Kinder müssen spätestens um <strong>${t} Uhr</strong> in der Halle sein` : `Die Kinder müssen ${Z.einstellungen.standdienstVorlauf ?? 60} Minuten vor Anwurf in der Halle sein`} (${Z.einstellungen.standdienstVorlauf ?? 60} Minuten vor Anwurf). Abfahrt bitte entsprechend früher planen.</p>`;
+}
 const AUSTRAGEN_HINWEIS = "Austragen geht nur auf dem Handy, mit dem du dich eingetragen hast. Sonst kurz in die WhatsApp-Gruppe schreiben.";
 const kopfzeile = (unter, titel) => `<p class="unterzeile">${unter}</p><h1>${titel}</h1>`;
 
@@ -154,12 +166,12 @@ function meineTermine() {
   for (const f of Z.fahrten.filter((x) => x.eigen)) {
     const sp = spiel(f.spielId);
     const mit = Z.mitfahrer.filter((m) => m.fahrtId === f.id).map((m) => m.name);
-    if (kommt(sp)) t.push({ key: "f" + f.id, spiel: sp, text: `Du fährst${mit.length ? ": " + mit.join(", ") : ""}${f.treffpunkt ? " · " + f.treffpunkt : ""}`, link: "#/fahrten" });
+    if (kommt(sp)) t.push({ key: "f" + f.id, spiel: sp, text: `Du fährst${mit.length ? ": " + mit.join(", ") : ""}${f.treffpunkt ? " · " + f.treffpunkt : ""}${treffzeit(sp) ? ` · in der Halle um ${treffzeit(sp)}` : ""}`, standdienst: true, link: "#/fahrten" });
   }
   for (const m of Z.mitfahrer.filter((x) => x.eigen)) {
     const f = Z.fahrten.find((x) => x.id === m.fahrtId);
     const sp = f && spiel(f.spielId);
-    if (kommt(sp)) t.push({ key: "m" + m.id, spiel: sp, text: `${m.name} fährt mit bei ${f.fahrer.split(" (")[0]}${f.treffpunkt ? " · " + f.treffpunkt : ""}`, link: "#/fahrten" });
+    if (kommt(sp)) t.push({ key: "m" + m.id, spiel: sp, text: `${m.name} fährt mit bei ${f.fahrer.split(" (")[0]}${f.treffpunkt ? " · " + f.treffpunkt : ""}`, standdienst: true, link: "#/fahrten" });
   }
   if (meinKind()) {
     for (const p of trikotPlan().filter((p) => !p.erledigt && p.spiel.datum >= heute() && p.familie === "Familie von " + meinKind())) {
@@ -620,7 +632,7 @@ function seiteVerwaltung() {
           <div class="feld"><label>Reserveplätze</label><input type="number" min="0" max="5" name="reservePlaetze" value="${e.reservePlaetze ?? 1}"></div>
         </div>
         <div class="ausrichten abstand">
-          <div class="feld" style="flex-basis:200px"><label>Standdienst da sein (Minuten vor Anpfiff)</label><input type="number" min="0" max="180" name="standdienstVorlauf" value="${e.standdienstVorlauf ?? 60}"></div>
+          <div class="feld" style="flex-basis:200px"><label>In der Halle sein (Minuten vor Anwurf, für Standdienst und Kinder)</label><input type="number" min="0" max="180" name="standdienstVorlauf" value="${e.standdienstVorlauf ?? 60}"></div>
         </div>
         <label>Infotext Standdienst</label><textarea name="standdienstInfo" style="min-height:70px" maxlength="400">${esc(e.standdienstInfo || "")}</textarea>
         <label class="schalter abstand"><input type="checkbox" name="galerieAktiv" ${e.galerieAktiv ? "checked" : ""}> Galerie für Eltern freigeben</label>
@@ -826,6 +838,7 @@ function fahrtKachel() {
   const st = fahrtStatus(s);
   return `<section class="karte"><div class="kachel-label">Nächste Auswärtsfahrt</div>
     ${spielZeile(s)}
+    ${hallenZeile(s)}
     <p class="abstand" style="margin-bottom:4px"><strong>${st.fahrten.length ? `${st.fahrten.length} Fahrer, ${st.frei} ${st.frei === 1 ? "Platz" : "Plätze"} frei` : "Noch keine Fahrgemeinschaft"}</strong></p>
     <a class="knopf" href="#/fahrten">Mitfahren oder Plätze anbieten</a></section>`;
 }
@@ -834,6 +847,7 @@ function fahrtenText(s) {
   const st = fahrtStatus(s);
   const z = [`🚗 Fahrgemeinschaften Auswärtsspiel ${wtDatum(s)}${s.zeit ? " " + s.zeit + " Uhr" : ""} bei ${s.gegner}`];
   if (s.halle) z.push(`📍 ${s.halle}`);
+  if (treffzeit(s)) z.push(`⏰ Kinder spätestens um ${treffzeit(s)} Uhr in der Halle`);
   z.push("");
   if (!st.fahrten.length) z.push("❗ Bisher bietet noch niemand Plätze an.");
   for (const f of st.fahrten) {
@@ -875,11 +889,12 @@ function seiteFahrten() {
     return `<details class="karte spiel-karte" data-gruppe="fahrten" data-spiel="${s.id}" id="fahrt-${s.id}" ${offeneFahrten.has(s.id) ? "open" : ""}>
       <summary><div class="summary-innen">${spielZeile(s)}<div class="summary-status">${status}</div></div></summary>
       <div class="fahrt-inhalt">
+        ${hallenZeile(s)}
         ${fahrten ? `<ul class="liste">${fahrten}</ul>` : `<p class="leer">Noch bietet niemand Plätze an.</p>`}
         <details class="abstand"><summary>Ich fahre und habe Plätze frei</summary>
           <form class="zeile" data-form="fahrt" data-spiel="${s.id}">
             <div class="feld" style="flex-basis:110px"><label>Freie Plätze</label><select name="plaetze">${[1, 2, 3, 4, 5, 6].map((n) => `<option ${n === 3 ? "selected" : ""}>${n}</option>`).join("")}</select></div>
-            <div class="feld" style="flex-basis:240px"><label>Treffpunkt und Uhrzeit</label><input type="text" name="treffpunkt" maxlength="120" placeholder="z. B. 13:00 Uhr Parkplatz OTV-Halle"></div>
+            <div class="feld" style="flex-basis:240px"><label>Treffpunkt und Uhrzeit</label><input type="text" name="treffpunkt" maxlength="120" placeholder="${treffzeit(s) ? `z. B. Abfahrt ${abfahrtVorschlag(s)} Uhr am OTV-Parkplatz` : "z. B. Abfahrt am OTV-Parkplatz"}"></div>
             <div class="feld" style="flex-basis:200px"><label>Hinweis</label><input type="text" name="hinweis" maxlength="160" placeholder="optional, z. B. nur Hinfahrt"></div>
             <button class="knopf">Fahrt anbieten</button>
           </form></details>
