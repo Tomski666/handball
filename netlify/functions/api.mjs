@@ -16,7 +16,7 @@ const COLLECTIONS = {
   spiele: {
     schreiben: "kasse",
     felder: { datum: { typ: "datum", pflicht: true }, zeit: { typ: "zeit" }, gegner: { ...S(80), pflicht: true },
-      heim: { typ: "bool" }, halle: S(80), hinweis: S(300), artikelAnders: S(300) },
+      heim: { typ: "bool" }, halle: S(80), hinweis: S(300), artikelAnders: S(300), mengen: S(300) },
   },
   kader: {
     schreiben: "kasse",
@@ -61,6 +61,11 @@ const COLLECTIONS = {
     felder: { artikel: { ...S(40), pflicht: true }, bei: S(60), seit: { typ: "datum" } },
   },
   zeitnehmer: {
+    schreiben: "eltern", eigeneLoeschen: true,
+    felder: { spielId: { ...S(40), pflicht: true }, name: { ...S(60), pflicht: true } },
+  },
+  waschdienst: {
+    // Pro Heimspiel: wer Geschirrtücher und Spüllappen nach dem Spiel mitnimmt, wäscht und zum nächsten Heimspiel mitbringt
     schreiben: "eltern", eigeneLoeschen: true,
     felder: { spielId: { ...S(40), pflicht: true }, name: { ...S(60), pflicht: true } },
   },
@@ -433,6 +438,8 @@ export default async (request) => {
           const belegt = (await liste(store, "zeitnehmer")).filter((x) => x.spielId === werte.spielId).length;
           if (belegt >= (e.zeitnehmerPlaetze || 1)) return fehler("Für dieses Spiel gibt es schon einen Zeitnehmer", 409);
         }
+        if (col === "waschdienst" && (await liste(store, "waschdienst")).some((x) => x.spielId === werte.spielId))
+          return fehler("Für dieses Spiel nimmt schon jemand die Wäsche mit", 409);
         if (col === "fahrten" && (werte.plaetze < 1 || werte.plaetze > 8)) return fehler("Bitte 1 bis 8 freie Plätze angeben");
         if (col === "mitfahrer") {
           const fahrt = await store.get(`fahrten/${werte.fahrtId}`, { type: "json" });

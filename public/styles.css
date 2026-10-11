@@ -420,3 +420,8 @@ a.termin-hinweis span { flex: 1; min-width: 0; }
 .knopf.klein { white-space: normal; text-align: center; }
 .zuordnung-liste > li { align-items: center; justify-content: space-between; gap: 8px; }
 .zuordnung-liste select { max-width: 100%; min-width: 0; flex: 0 1 220px; }
+.karten-zeitnehmer .zeitnehmer-zeile + .zeitnehmer-zeile { margin-top: 6px; }
+.artikel-admin { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+.menge-stepper { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; }
+.menge-stepper .mini { width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--grau-linie); background: var(--weiss); font-size: 18px; line-height: 1; cursor: pointer; color: var(--blau); }
+.menge-stepper .mini:disabled { opacity: .35; cursor: default; }
