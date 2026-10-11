@@ -418,3 +418,5 @@ a.termin-hinweis span { flex: 1; min-width: 0; }
 .antwort-tabelle td.betrag, .antwort-tabelle th.betrag { text-align: right; white-space: nowrap; }
 .knopf { max-width: 100%; }
 .knopf.klein { white-space: normal; text-align: center; }
+.zuordnung-liste > li { align-items: center; justify-content: space-between; gap: 8px; }
+.zuordnung-liste select { max-width: 100%; min-width: 0; flex: 0 1 220px; }

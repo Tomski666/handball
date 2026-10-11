@@ -96,6 +96,7 @@ const STANDARD_EINSTELLUNGEN = {
   standdienstPlaetze: 2,
   reservePlaetze: 1,
   galerieAktiv: false,
+  namenZuordnung: {}, // Helfer-Übersicht: Name ohne Sohn in Klammern -> Vorname des Sohns oder "-" (nicht zählen)
   cateringArtikel: [
     { name: "Kuchen", bedarf: 2, hinweis: "1 Blech oder 1 großer Kuchen" },
     { name: "Muffins", bedarf: 2, hinweis: "ca. 12 Stück" },
@@ -410,6 +411,8 @@ export default async (request) => {
       zusammen.zeitnehmerBei = zusammen.zeitnehmerBei === "heim" ? "heim" : "alle";
       zusammen.standdienstVorlauf = Math.min(180, Math.max(0, Number.parseInt(zusammen.standdienstVorlauf, 10) || 0));
       zusammen.standdienstInfo = String(zusammen.standdienstInfo || "").slice(0, 400);
+      const zo = zusammen.namenZuordnung && typeof zusammen.namenZuordnung === "object" && !Array.isArray(zusammen.namenZuordnung) ? zusammen.namenZuordnung : {};
+      zusammen.namenZuordnung = Object.fromEntries(Object.entries(zo).filter(([k, v]) => typeof v === "string" && v && k.length <= 80).slice(0, 300).map(([k, v]) => [k.trim().toLowerCase(), v.slice(0, 40)]));
       zusammen.reservePlaetze = Math.min(5, Math.max(0, Number.parseInt(zusammen.reservePlaetze, 10) || 0));
       await store.setJSON("einstellungen", zusammen);
       return json(zusammen);

@@ -886,10 +886,13 @@ function helferUebersicht() {
   const namen = kader().map((k) => k.vorname);
   const zeilen = Object.fromEntries(namen.map((n) => [n, { standdienst: 0, mitgebracht: 0, gefahren: 0, zeitnehmer: 0, trikots: 0 }]));
   const ohne = {};
+  const zuordnung = Z.einstellungen.namenZuordnung || {};
   const zaehle = (name, feld) => {
-    const f = familieAusName(name);
+    const n = (name || "?").trim();
+    const f = familieAusName(n) || zuordnung[n.toLowerCase()];
+    if (f === "-") return;
     if (f && zeilen[f]) zeilen[f][feld]++;
-    else { const n = (name || "?").trim(); ohne[n] = (ohne[n] || 0) + 1; }
+    else ohne[n] = (ohne[n] || 0) + 1;
   };
   Z.standdienst.filter((x) => !x.reserve).forEach((x) => zaehle(x.name, "standdienst"));
   Z.catering.forEach((x) => zaehle(x.name, "mitgebracht"));
@@ -905,7 +908,13 @@ function helferUebersicht() {
       <thead><tr><th>Familie</th><th>Stand&shy;dienst</th><th>Mit&shy;gebracht</th><th>Gefahren</th><th>Zeit&shy;nehmer</th><th>Trikots</th><th>Gesamt</th></tr></thead>
       <tbody>${liste.map(({ n, z, s }) => `<tr class="${s === 0 ? "null" : ""}"><td>${esc(n)}</td><td>${z.standdienst}</td><td>${z.mitgebracht}</td><td>${z.gefahren}</td><td>${z.zeitnehmer}</td><td>${z.trikots}</td><td><strong>${s}</strong></td></tr>`).join("")}</tbody>
     </table></div>
-    ${Object.keys(ohne).length ? `<p class="leise klein abstand">Ohne Zuordnung: ${Object.entries(ohne).map(([n, c]) => `${esc(n)} (${c})`).join(", ")}</p>` : ""}
+    ${Object.keys(ohne).length ? `<h3 class="abstand">Ohne Zuordnung</h3>
+      <p class="leise klein">Diese Einträge haben keinen Sohn in Klammern. Einmal zuordnen, dann zählen auch alle künftigen Einträge mit diesem Namen. Mehrere Elternteile können zum selben Sohn gehören.</p>
+      <ul class="liste zuordnung-liste">${Object.entries(ohne).sort((a, b) => a[0].localeCompare(b[0], "de")).map(([n, c]) => `<li><span><strong>${esc(n)}</strong> <span class="leise">(${c}×)</span></span>
+        <select data-aktion="name-zuordnen" data-name="${esc(n)}"><option value="">Sohn wählen …</option>${namen.map((k) => `<option value="${esc(k)}">${esc(k)}</option>`).join("")}<option value="-">nicht mitzählen (z. B. Trainer)</option></select></li>`).join("")}</ul>` : ""}
+    ${Object.keys(zuordnung).length ? `<details class="abstand"><summary>Zugeordnete Namen (${Object.keys(zuordnung).length})</summary>
+      <ul class="liste zuordnung-liste">${Object.entries(zuordnung).sort((a, b) => a[0].localeCompare(b[0], "de")).map(([n, f]) => `<li><span>${esc(n.replace(/(^|[\s-])\S/g, (c) => c.toUpperCase()))} → <strong>${f === "-" ? "nicht mitgezählt" : esc(f)}</strong></span>
+        <button class="link-knopf" data-aktion="name-zuordnung-loesen" data-name="${esc(n)}">lösen</button></li>`).join("")}</ul></details>` : ""}
   </section>`;
 }
 
@@ -1522,6 +1531,11 @@ inhalt.addEventListener("click", async (ev) => {
         await api("PUT", "/api/c/antworten/" + id, { bezahlt: false });
         await neuLaden("Als unbezahlt markiert. Die Buchung bitte in der Kasse löschen, falls nötig.");
       }
+    } else if (a === "name-zuordnung-loesen") {
+      const zuordnung = { ...(Z.einstellungen.namenZuordnung || {}) };
+      delete zuordnung[el.dataset.name];
+      await api("PUT", "/api/einstellungen", { namenZuordnung: zuordnung });
+      await neuLaden("Zuordnung gelöst");
     } else if (a === "name-aendern") {
       await willkommen({ nurName: true }); zeigen();
     } else if (a === "mitfahren-schnell") {
@@ -1611,6 +1625,13 @@ inhalt.addEventListener("change", async (ev) => {
         await api("PUT", "/api/c/antworten/" + id, { terminId: el.dataset.termin, familie: el.dataset.familie, kommt: true, personen: Number(el.value) || 0 });
       }
       await neuLaden("Gespeichert");
+      return;
+    }
+    if (el.dataset.aktion === "name-zuordnen") {
+      if (!el.value) return;
+      const zuordnung = { ...(Z.einstellungen.namenZuordnung || {}), [el.dataset.name.trim().toLowerCase()]: el.value };
+      await api("PUT", "/api/einstellungen", { namenZuordnung: zuordnung });
+      await neuLaden(el.value === "-" ? `${el.dataset.name} wird nicht mitgezählt` : `${el.dataset.name} gehört zu ${el.value}`);
       return;
     }
     if (el.dataset.aktion === "trikot-erledigt") {
