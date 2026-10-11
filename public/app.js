@@ -620,6 +620,7 @@ function seiteGalerie() {
   <details class="karte" ${galerie.length ? "" : "open"}>
     <summary>Fotos hochladen</summary>
     <div class="hinweis">Bitte nur Fotos hochladen, mit denen die abgebildeten Jungs und deren Eltern einverstanden sind. Keine Fotos aus der Umkleide, keine peinlichen Situationen. Fotos werden vor dem Hochladen verkleinert, Standortdaten werden dabei entfernt.</div>
+    <div class="hinweis info">📸 <strong>Datensparsam knipsen 😉</strong> Lieber das eine Siegerfoto als 47 fast gleiche Serienbilder. Sucht die besten 5 bis 10 Bilder pro Spiel aus, der Rest darf gern auf dem eigenen Handy bleiben. Das schont Speicher, Datenvolumen und die Nerven aller, die durchscrollen.</div>
     <form class="zeile" data-form="galerie">
       <div class="feld"><label>Album</label><input type="text" name="album" list="alben" required maxlength="80" placeholder="z. B. 10.10.2026 Bergischer HC III"><datalist id="alben">${albumVorschlaege.map((a) => `<option value="${esc(a)}">`).join("")}</datalist></div>
       <div class="feld"><label>Dein Name</label><input type="text" name="name" maxlength="60" value="${esc(gemerkterName())}"></div>
@@ -1500,6 +1501,11 @@ if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").cat
 laden().then(() => {
   zeigen();
   if (!lokal("otv_willkommen") && !meinName()) willkommen().then(() => zeigen());
+  else if (meinKind() && !Z.kader.some((k) => k.vorname === meinKind())) {
+    // Kader wurde geändert (z. B. "Levi" heißt jetzt "Levi H."): Sohn einmal neu auswählen lassen
+    lokal("otv_kind", "");
+    willkommen({ nurName: true }).then(() => zeigen());
+  }
 }).catch((e) => {
   inhalt.innerHTML = `<div class="hinweis">Die Seite konnte nicht geladen werden: ${esc(e.message)}</div>`;
 });

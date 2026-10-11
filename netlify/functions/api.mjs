@@ -88,7 +88,7 @@ const STANDARD_EINSTELLUNGEN = {
 
 // Spielplan Saison 2026/27 (Regionsoberliga männliche C, Meisterrunde) und Kader nur mit Vornamen.
 // Werden beim ersten Start angelegt bzw. per Datenstand-Abgleich ergänzt, ohne Bestehendes zu löschen.
-const DATENSTAND = 6;
+const DATENSTAND = 7;
 
 // Kassenbuch auf Papier bis 10.10.2026 (Anfangsbestand 812,08 € am 14.09.2026), einmalig übernommen
 const KASSE_PAPIER = {
@@ -131,15 +131,15 @@ const STARTDATEN = {
   kader: [
     { vorname: "Christos", nummer: "", reihenfolge: 1 },
     { vorname: "Emil", nummer: "3", reihenfolge: 2 },
-    { vorname: "Felix", nummer: "", reihenfolge: 3 },
-    { vorname: "Jasper", nummer: "", reihenfolge: 4 },
-    { vorname: "Jonas", nummer: "", reihenfolge: 5 },
-    { vorname: "Jonathan", nummer: "18", reihenfolge: 6 },
-    { vorname: "Jonne", nummer: "", reihenfolge: 7 },
-    { vorname: "Lasse", nummer: "", reihenfolge: 8 },
-    { vorname: "Levi", nummer: "", reihenfolge: 9 },
-    { vorname: "Lian", nummer: "", reihenfolge: 10 },
-    { vorname: "Mats", nummer: "16", reihenfolge: 11 },
+    { vorname: "Jasper", nummer: "", reihenfolge: 3 },
+    { vorname: "Jonathan", nummer: "18", reihenfolge: 4 },
+    { vorname: "Julian", nummer: "", reihenfolge: 5 },
+    { vorname: "Lasse", nummer: "", reihenfolge: 6 },
+    { vorname: "Levi H.", nummer: "", reihenfolge: 7 },
+    { vorname: "Levi S.", nummer: "", reihenfolge: 8 },
+    { vorname: "Liam", nummer: "", reihenfolge: 9 },
+    { vorname: "Mats", nummer: "16", reihenfolge: 10 },
+    { vorname: "Max", nummer: "", reihenfolge: 11 },
     { vorname: "Mehyar", nummer: "", reihenfolge: 12 },
     { vorname: "Mika", nummer: "", reihenfolge: 13 },
     { vorname: "Nico", nummer: "", reihenfolge: 14 },
@@ -211,6 +211,13 @@ async function abgleich(store, e) {
     else {
       const id = neueId();
       await store.setJSON(`kader/${id}`, { id, ...k, erstellt: new Date().toISOString() });
+    }
+  }
+  // Datenstand 7: Kader exakt auf die aktuelle Liste bringen (nicht mehr aufgeführte Spieler entfernen)
+  if ((e.datenstand || 1) < 7) {
+    const soll = new Set(STARTDATEN.kader.map((k) => norm(k.vorname)));
+    for (const k of await liste(store, "kader")) {
+      if (!soll.has(norm(k.vorname))) await store.delete(`kader/${k.id}`);
     }
   }
   for (const t of await liste(store, "trainer")) {
