@@ -50,6 +50,31 @@ const COLLECTIONS = {
     schreiben: "eltern", eigeneLoeschen: true,
     felder: { fahrtId: { ...S(40), pflicht: true }, name: { ...S(40), pflicht: true }, eingetragenVon: S(60) },
   },
+  vorrat: {
+    // Schlüssel = Artikel (z. B. "kaffee"). Standdienst meldet nach dem Spiel den Stand.
+    schreiben: "eltern", upsert: true,
+    felder: { artikel: { ...S(40), pflicht: true }, status: { typ: "wahl", werte: ["ok", "knapp", "leer"], pflicht: true }, von: S(60), datum: { typ: "datum" } },
+  },
+  waesche: {
+    // Schlüssel = Artikel. "bei" leer = liegt in der Kiste
+    schreiben: "eltern", upsert: true,
+    felder: { artikel: { ...S(40), pflicht: true }, bei: S(60), seit: { typ: "datum" } },
+  },
+  zeitnehmer: {
+    schreiben: "eltern", eigeneLoeschen: true,
+    felder: { spielId: { ...S(40), pflicht: true }, name: { ...S(60), pflicht: true } },
+  },
+  termine: {
+    schreiben: "kasse",
+    felder: { titel: { ...S(80), pflicht: true }, datum: { typ: "datum", pflicht: true }, zeit: { typ: "zeit" }, ort: S(120),
+      beschreibung: S(2000), kostenProPerson: { typ: "zahl" }, frage: S(160) },
+  },
+  antworten: {
+    // Schlüssel = Termin + Familie. Eltern melden sich zurück, die Kasse setzt "bezahlt".
+    schreiben: "eltern", upsert: true, nurKasse: ["bezahlt"],
+    felder: { terminId: { ...S(40), pflicht: true }, familie: { ...S(40), pflicht: true }, kommt: { typ: "bool" },
+      personen: { typ: "zahl" }, bemerkung: S(160), bezahlt: { typ: "bool" }, von: S(60) },
+  },
   kasse: {
     schreiben: "kasse",
     felder: { datum: { typ: "datum", pflicht: true }, art: { typ: "wahl", werte: ["einnahme", "ausgabe"], pflicht: true },
@@ -75,9 +100,18 @@ const STANDARD_EINSTELLUNGEN = {
     { name: "Kuchen", bedarf: 2, hinweis: "1 Blech oder 1 großer Kuchen" },
     { name: "Muffins", bedarf: 2, hinweis: "ca. 12 Stück" },
     { name: "Laugengebäck", bedarf: 1, hinweis: "ca. 15 Stück" },
-    { name: "Kaffee", bedarf: 1, hinweis: "1 Packung gemahlen (500 g)", immer: false },
-    { name: "Milch", bedarf: 2, hinweis: "1 Liter H-Milch" },
   ],
+  vorratArtikel: [
+    { name: "Kaffee", hinweis: "1 Packung gemahlen (500 g)" },
+    { name: "Milch", hinweis: "1 Liter H-Milch" },
+    { name: "Zucker", hinweis: "1 Packung" },
+    { name: "Becher", hinweis: "1 Pack Pappbecher" },
+    { name: "Spülmittel", hinweis: "1 Flasche" },
+  ],
+  waescheArtikel: ["Geschirrtücher", "Spüllappen"],
+  zeitnehmerBei: "alle", // "alle" oder "heim"
+  zeitnehmerPlaetze: 1,
+  zeitnehmerHinweis: "Ohne Zeitnehmer droht eine Strafe für die Mannschaft.",
   standdienstVorlauf: 60, // Minuten vor Anpfiff
   standdienstInfo: "Die Jungs sind ebenfalls eine Stunde vor Anpfiff da. Aufgaben: Stand aufbauen, verkaufen und kassieren, am Ende abbauen.",
   kassenKategorien: ["Heimspiel-Catering", "Getränke OTV", "Einkauf Catering", "Mannschaftsfeier", "Geschenke", "Turnier/Fahrten", "Sonstiges"],
@@ -88,7 +122,17 @@ const STANDARD_EINSTELLUNGEN = {
 
 // Spielplan Saison 2026/27 (Regionsoberliga männliche C, Meisterrunde) und Kader nur mit Vornamen.
 // Werden beim ersten Start angelegt bzw. per Datenstand-Abgleich ergänzt, ohne Bestehendes zu löschen.
-const DATENSTAND = 7;
+const DATENSTAND = 8;
+
+const WEIHNACHTSFEIER = {
+  titel: "Weihnachtsfeier C-Jugend",
+  datum: "2026-11-27",
+  zeit: "17:00",
+  ort: "Humboldthalle",
+  beschreibung: "ab 17:00 Uhr: gemeinsames Training Spieler und Eltern mit Spiel und Spaß\nab ca. 19:00 Uhr: gemeinsames Pizzaessen und gemütliches Zusammensitzen bei einem Getränk\n\nDie Kosten für Spieler und Trainer werden aus der Vereinskasse übernommen. Alle anderen Teilnehmer (z. B. Eltern, Geschwister) zahlen 5 € pro Person. Die Pizza bestellen wir gemeinsam. Getränke bringen die Teilnehmer selbst mit (ausgenommen Spieler und Trainer).",
+  kostenProPerson: 500,
+  frage: "Wie viele zusätzliche Personen (Eltern, Geschwister) kommen mit?",
+};
 
 // Kassenbuch auf Papier bis 10.10.2026 (Anfangsbestand 812,08 € am 14.09.2026), einmalig übernommen
 const KASSE_PAPIER = {
@@ -128,6 +172,7 @@ const STARTDATEN = {
     { name: "Marte Kullenberg", rolle: "Trainer", text: "", reihenfolge: 3 },
     { name: "Joschka Siegert", rolle: "Trainer", text: "", reihenfolge: 4 },
   ],
+  termine: [WEIHNACHTSFEIER],
   kader: [
     { vorname: "Christos", nummer: "", reihenfolge: 1 },
     { vorname: "Emil", nummer: "3", reihenfolge: 2 },
@@ -213,6 +258,14 @@ async function abgleich(store, e) {
       await store.setJSON(`kader/${id}`, { id, ...k, erstellt: new Date().toISOString() });
     }
   }
+  // Datenstand 8: Weihnachtsfeier anlegen (falls nicht vorhanden)
+  if ((e.datenstand || 1) < 8) {
+    const termine = await liste(store, "termine");
+    if (!termine.some((t) => t.datum === WEIHNACHTSFEIER.datum)) {
+      const id = "weihnachtsfeier-2026"; // feste Kennung, damit parallele Aufrufe keinen doppelten Termin anlegen
+      await store.setJSON(`termine/${id}`, { id, ...WEIHNACHTSFEIER, erstellt: new Date().toISOString() });
+    }
+  }
   // Datenstand 7: Kader exakt auf die aktuelle Liste bringen (nicht mehr aufgeführte Spieler entfernen)
   if ((e.datenstand || 1) < 7) {
     const soll = new Set(STARTDATEN.kader.map((k) => norm(k.vorname)));
@@ -224,6 +277,11 @@ async function abgleich(store, e) {
     if (t.rolle === "Trainerin" && t.name.startsWith("Marte")) await store.setJSON(`trainer/${t.id}`, { ...t, rolle: "Trainer" });
   }
   const neu = { ...e, datenstand: DATENSTAND };
+  // Datenstand 8: Kaffee und Milch wandern von der Mitbringliste in den Vorrat
+  if ((e.datenstand || 1) < 8) {
+    const basis = neu.cateringArtikel || e.cateringArtikel;
+    if (Array.isArray(basis)) neu.cateringArtikel = basis.filter((a) => !["Kaffee", "Milch"].includes(a.name));
+  }
   // Datenstand 6: "Kinder" heißt jetzt "Jungs" (nur im unveränderten Standardtext)
   if ((e.datenstand || 1) < 6 && typeof e.standdienstInfo === "string") {
     neu.standdienstInfo = e.standdienstInfo.replace("Die Kinder sind", "Die Jungs sind");
@@ -348,6 +406,8 @@ export default async (request) => {
       zusammen.anfangsbestand = Math.round(Number(zusammen.anfangsbestand)) || 0;
       zusammen.standdienstPlaetze = Math.min(10, Math.max(1, Number.parseInt(zusammen.standdienstPlaetze, 10) || 2));
       zusammen.galerieAktiv = zusammen.galerieAktiv === true;
+      zusammen.zeitnehmerPlaetze = Math.min(3, Math.max(0, Number.parseInt(zusammen.zeitnehmerPlaetze, 10) || 0));
+      zusammen.zeitnehmerBei = zusammen.zeitnehmerBei === "heim" ? "heim" : "alle";
       zusammen.standdienstVorlauf = Math.min(180, Math.max(0, Number.parseInt(zusammen.standdienstVorlauf, 10) || 0));
       zusammen.standdienstInfo = String(zusammen.standdienstInfo || "").slice(0, 400);
       zusammen.reservePlaetze = Math.min(5, Math.max(0, Number.parseInt(zusammen.reservePlaetze, 10) || 0));
@@ -364,6 +424,12 @@ export default async (request) => {
       if (methode === "POST") {
         if (!darf(rolle, def.schreiben)) return fehler("Keine Berechtigung", 403);
         const werte = pruefe(def, await request.json());
+        if (rolle !== "kasse") for (const f of def.nurKasse || []) delete werte[f];
+        if (col === "zeitnehmer") {
+          const e = await einstellungen(store);
+          const belegt = (await liste(store, "zeitnehmer")).filter((x) => x.spielId === werte.spielId).length;
+          if (belegt >= (e.zeitnehmerPlaetze || 1)) return fehler("Für dieses Spiel gibt es schon einen Zeitnehmer", 409);
+        }
         if (col === "fahrten" && (werte.plaetze < 1 || werte.plaetze > 8)) return fehler("Bitte 1 bis 8 freie Plätze angeben");
         if (col === "mitfahrer") {
           const fahrt = await store.get(`fahrten/${werte.fahrtId}`, { type: "json" });
@@ -385,12 +451,14 @@ export default async (request) => {
 
       if (methode === "PUT" && id) {
         if (!darf(rolle, def.schreiben)) return fehler("Keine Berechtigung", 403);
+        if (!/^[\w-]{1,100}$/.test(id)) return fehler("Ungültiger Schlüssel");
         const alt = await store.get(`${col}/${id}`, { type: "json" });
         if (!alt && !def.upsert) return fehler("Nicht gefunden", 404);
         if (alt && def.eigeneLoeschen && rolle !== "kasse" && alt.besitzer !== besitzer) {
           return fehler("Nur eigene Einträge können geändert werden", 403);
         }
         const werte = pruefe(def, await request.json(), true);
+        if (rolle !== "kasse") for (const f of def.nurKasse || []) delete werte[f];
         const neu = { ...(alt || { id, erstellt: new Date().toISOString() }), ...werte, geaendert: new Date().toISOString() };
         await store.setJSON(`${col}/${id}`, neu);
         return json(oeffentlich(neu, besitzer));

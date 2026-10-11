@@ -381,3 +381,40 @@ input[type=file] { max-width: 100%; width: 100%; font-size: 15px; }
 .schritte li { margin-bottom: 8px; }
 .nicht-noetig { color: var(--text-leise); font-size: 14px; margin: 8px 0 0; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .link-knopf.klein { font-size: 12px; color: var(--text-leise); }
+
+/* Zeitnehmer */
+.zeitnehmer-zeile { display: flex; justify-content: space-between; align-items: center; gap: 8px 12px; flex-wrap: wrap; font-size: 15px; padding: 8px 12px; border-radius: 8px; margin-top: 10px; border-left: 4px solid; }
+.zeitnehmer-zeile.ok { background: var(--gruen-hell); border-left-color: var(--gruen); }
+.zeitnehmer-zeile.offen { background: #fdf0dc; border-left-color: #e08a00; }
+.zeitnehmer-zeile.dringend { background: var(--rot-hell); border-left-color: var(--rot); }
+.zeitnehmer-zeile.dringend strong { color: var(--rot); }
+.zeitnehmer-zeile > span { min-width: 0; overflow-wrap: anywhere; }
+.karten-zeitnehmer { padding: 0 20px; margin-bottom: 4px; }
+li.spiel-mit-zn > .zeitnehmer-zeile { flex-basis: 100%; margin-top: 4px; }
+
+/* Vorrat und Wäsche */
+details.vorrat-karte > summary { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+details.vorrat-karte > summary .pill { white-space: normal; text-align: left; }
+.vorrat-karte .liste > li { align-items: center; justify-content: space-between; gap: 8px; }
+.segment { display: inline-flex; border: 1px solid var(--grau-linie); border-radius: 8px; overflow: hidden; flex-shrink: 0; }
+.seg { border: 0; background: var(--weiss); padding: 8px 12px; font-size: 14px; font-weight: 600; cursor: pointer; color: var(--text-leise); min-height: 40px; }
+.seg + .seg { border-left: 1px solid var(--grau-linie); }
+.seg.an.ok { background: var(--gruen); color: #fff; }
+.seg.an.knapp { background: #e08a00; color: #fff; }
+.seg.an.leer { background: var(--rot); color: #fff; }
+
+/* Termine */
+a.termin-hinweis { display: flex; gap: 10px; align-items: center; background: var(--gelb-hell); border-left: 4px solid #e0a800; border-radius: 8px; padding: 12px 14px; margin: 0 0 16px; color: inherit; text-decoration: none; font-size: 16px; }
+a.termin-hinweis span { flex: 1; min-width: 0; }
+.termin-karte + .termin-karte { margin-top: 16px; }
+.termin-text { margin: 12px 0; line-height: 1.6; overflow-wrap: break-word; }
+.termin-stand { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-size: 14px; margin: 8px 0 12px; }
+.antwort-box { background: var(--blau-hell); border-radius: 8px; padding: 12px 14px; }
+.antwort-box select { min-width: 80px; }
+.antwort-tabelle, .helfer-tabelle { width: 100%; border-collapse: collapse; font-size: 14px; }
+.antwort-tabelle th, .antwort-tabelle td, .helfer-tabelle th, .helfer-tabelle td { padding: 6px 8px; border-bottom: 1px solid var(--grau); text-align: left; vertical-align: middle; }
+.helfer-tabelle td:not(:first-child), .helfer-tabelle th:not(:first-child) { text-align: center; }
+.helfer-tabelle tr.null td { background: var(--rot-hell); }
+.antwort-tabelle td.betrag, .antwort-tabelle th.betrag { text-align: right; white-space: nowrap; }
+.knopf { max-width: 100%; }
+.knopf.klein { white-space: normal; text-align: center; }

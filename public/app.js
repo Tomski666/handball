@@ -144,6 +144,7 @@ const SEITEN = {
   spiele: seiteSpiele,
   catering: seiteCatering,
   fahrten: seiteFahrten,
+  termine: seiteTermine,
   trikots: seiteTrikots,
   kasse: seiteKasse,
   galerie: seiteGalerie,
@@ -173,6 +174,16 @@ function meineTermine() {
     const sp = f && spiel(f.spielId);
     if (kommt(sp)) t.push({ key: "m" + m.id, spiel: sp, text: `${m.name} fährt mit bei ${f.fahrer.split(" (")[0]}${f.treffpunkt ? " · " + f.treffpunkt : ""}`, standdienst: true, link: "#/fahrten" });
   }
+  for (const z of (Z.zeitnehmer || []).filter((x) => x.eigen)) {
+    const sp = spiel(z.spielId);
+    if (kommt(sp)) t.push({ key: "z" + z.id, spiel: sp, text: "Du bist Zeitnehmer", standdienst: true, link: "#/spiele" });
+  }
+  if (meinKind()) {
+    for (const a of (Z.antworten || []).filter((x) => x.familie === meinKind() && x.kommt)) {
+      const tm = (Z.termine || []).find((x) => x.id === a.terminId);
+      if (tm && tm.datum >= heute()) t.push({ key: "a" + a.id, spiel: { datum: tm.datum, zeit: tm.zeit, titel: tm.titel, ort: tm.ort }, text: `${tm.titel}${a.personen ? ` (+${a.personen})` : ""}`, link: "#/termine" });
+    }
+  }
   if (meinKind()) {
     for (const p of trikotPlan().filter((p) => !p.erledigt && p.spiel.datum >= heute() && p.familie === "Familie von " + meinKind())) {
       t.push({ key: "t" + p.spiel.id, spiel: p.spiel, text: "Ihr nehmt die Trikots zum Waschen mit", link: "#/trikots" });
@@ -187,7 +198,7 @@ function kalenderLaden(termine) {
   const z = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//OTV C-Jugend//DE", "CALSCALE:GREGORIAN"];
   for (const t of termine) {
     const s = t.spiel;
-    const titel = `${t.text.split(" · ")[0]}: ${s.heim ? "OTV gegen " + s.gegner : s.gegner + " gegen OTV"}`;
+    const titel = s.titel ? t.text : `${t.text.split(" · ")[0]}: ${s.heim ? "OTV gegen " + s.gegner : s.gegner + " gegen OTV"}`;
     z.push("BEGIN:VEVENT", `UID:${t.key}@otv-c-jugend`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, "").slice(0, 15)}Z`);
     if (s.zeit) {
       const start = t.standdienst && treffzeit(s) ? treffzeit(s) : s.zeit;
@@ -198,7 +209,7 @@ function kalenderLaden(termine) {
       z.push(`DTSTART;VALUE=DATE:${f(s.datum)}`);
     }
     z.push(`SUMMARY:${titel.replace(/[,;]/g, "\\$&")}`);
-    if (s.halle) z.push(`LOCATION:${s.halle.replace(/[,;]/g, "\\$&")}`);
+    if (s.halle || s.ort) z.push(`LOCATION:${(s.halle || s.ort).replace(/[,;]/g, "\\$&")}`);
     z.push(`DESCRIPTION:${(t.text + "\\n" + location.origin + "/" + t.link).replace(/[,;]/g, "\\$&")}`);
     z.push("BEGIN:VALARM", "TRIGGER:-P1D", "ACTION:DISPLAY", "DESCRIPTION:Erinnerung OTV C-Jugend", "END:VALARM", "END:VEVENT");
   }
@@ -216,13 +227,15 @@ const istBald = (s) => (datum(s.datum) - datum(heute())) / 864e5 < 7;
 
 function fehltKasten(s) {
   const st = cateringStatus(s);
-  if (st.komplett) return `<div class="fehlt-kasten ok">✓ Alles besetzt, danke!</div>`;
+  const znFehlt = zeitnehmerFehlt(s);
+  if (st.komplett && !znFehlt) return `<div class="fehlt-kasten ok">✓ Alles besetzt, danke!</div>`;
   const frei = st.plaetze - st.dienst;
   const wann = istBald(s) ? `Für ${wochentagLang(s)}` : `Für den ${datum(s.datum).toLocaleDateString("de-DE", { day: "numeric", month: "numeric" })}`;
   return `<div class="fehlt-kasten">
     <strong>⚠️ ${wann} fehlen noch:</strong>
     ${frei > 0 ? `<div>👕 ${frei}× Standdienst</div>` : ""}
     ${st.offen.length ? `<div>🍰 ${st.offen.map((a) => esc(a.name)).join(", ")}</div>` : ""}
+    ${znFehlt ? `<div>⏱ Zeitnehmer</div>` : ""}
   </div>`;
 }
 
@@ -252,6 +265,7 @@ function heimKarte(heim, schonGezeigt) {
       ${fehltKasten(heim)}
       ${ichDienst ? `<p class="gut">✓ Du hast hier Standdienst${treffzeit(heim) ? `, bitte spätestens um ${treffzeit(heim)} Uhr da sein` : ""}.</p>` : ""}
     </div>
+    ${zeitnehmerZeile(heim)}
     ${knoepfe.length ? `<div class="hero-aktionen">${knoepfe.join("")}</div>` : ""}
     ${st.offen.length ? `<div class="mitbringen-auswahl" id="mb-${heim.id}" hidden>
       <p class="leise klein" style="margin:12px 0 6px">Was bringst du mit? Einmal antippen genügt.</p>
@@ -270,6 +284,7 @@ function auswaertsKarte(s) {
     <div class="kachel-label">Auswärtsspiel · Fahrgemeinschaft</div>
     ${spielZeile(s)}
     ${hallenZeile(s)}
+    ${zeitnehmerZeile(s)}
     ${st.fahrten.length ? `<ul class="liste fahrer-liste">${st.fahrten.map((f) => {
       const mit = Z.mitfahrer.filter((m) => m.fahrtId === f.id).map((m) => m.name);
       const frei = f.plaetze - mit.length;
@@ -300,13 +315,18 @@ function seiteStart() {
       ${termine.length > 1 ? `<button class="link-knopf" data-aktion="kalender" data-alle="1">📅 Alle in den Kalender</button>` : ""}</div>
     ${termine.length ? `<ul class="liste">${termine.map((t) => `<li>
         <a class="termin" href="${t.link}">${datumBlock(t.spiel.datum)}<span><strong>${esc(t.text)}</strong>
-          <span class="leise klein">${t.spiel.zeit ? esc(t.spiel.zeit) + " Uhr · " : ""}${t.spiel.heim ? "gegen " : "bei "}${esc(t.spiel.gegner)}</span></span></a>
+          <span class="leise klein">${t.spiel.zeit ? esc(t.spiel.zeit) + " Uhr · " : ""}${t.spiel.titel ? esc(t.spiel.ort || "") : (t.spiel.heim ? "gegen " : "bei ") + esc(t.spiel.gegner)}</span></span></a>
         <button class="knopf zweit klein" data-aktion="kalender" data-key="${t.key}" aria-label="In den Kalender">📅 In Kalender</button></li>`).join("")}</ul>`
       : `<p class="leer">Du hast dich noch nirgends eingetragen. Oben geht es mit einem Klick.</p>`}
   </section>`;
 
+  const offeneTermine = (Z.termine || []).filter((tm) => tm.datum >= heute() && (datum(tm.datum) - datum(heute())) / 864e5 <= 60
+    && !(meinKind() && (Z.antworten || []).some((a) => a.terminId === tm.id && a.familie === meinKind())));
+  const terminHinweis = offeneTermine.map((tm) => `<a class="termin-hinweis" href="#/termine">📅 <span><strong>${esc(tm.titel)}</strong> am ${datum(tm.datum).toLocaleDateString("de-DE", { day: "numeric", month: "numeric" })}: bitte zurückmelden</span> ›</a>`).join("");
+
   return `<p class="unterzeile">${meinVorname() ? "Hallo " + esc(meinVorname()) : "Willkommen"}</p><h1>Die nächsten Spiele</h1>
   ${installKarte()}
+  ${terminHinweis}
   ${karten.length ? karten.map((k, i) => `<div class="${i ? "abstand" : ""}">${k}</div>`).join("") : `<section class="karte"><p class="leer">Gerade steht kein Spiel an.</p></section>`}
   ${heimHinweis}
   <div class="abstand">${meine}</div>`;
@@ -347,7 +367,7 @@ function seiteSpiele() {
   const e = Z.einstellungen;
   const liste = spieleSortiert();
   const k = kommende(liste), v = vergangene(liste);
-  const zeile = (s) => `<li>${spielZeile(s)}${istAdmin() ? `<span class="ausrichten"><button class="knopf klein zweit" data-aktion="spiel-bearbeiten" data-id="${s.id}">Bearbeiten</button><button class="knopf klein gefahr" data-aktion="loeschen" data-col="spiele" data-id="${s.id}" data-frage="Spiel löschen? Standdienst-, Catering- und Trikot-Einträge zu diesem Spiel bleiben erhalten, werden aber nicht mehr angezeigt.">Löschen</button></span>` : ""}</li>`;
+  const zeile = (s) => `<li class="spiel-mit-zn">${spielZeile(s)}${zeitnehmerZeile(s)}${istAdmin() ? `<span class="ausrichten"><button class="knopf klein zweit" data-aktion="spiel-bearbeiten" data-id="${s.id}">Bearbeiten</button><button class="knopf klein gefahr" data-aktion="loeschen" data-col="spiele" data-id="${s.id}" data-frage="Spiel löschen? Standdienst-, Catering- und Trikot-Einträge zu diesem Spiel bleiben erhalten, werden aber nicht mehr angezeigt.">Löschen</button></span>` : ""}</li>`;
   return `${kopfzeile("Was passiert wann und wo?", "Spiele")}
   <div class="raster-2">
     <section class="karte">
@@ -360,6 +380,7 @@ function seiteSpiele() {
     <section class="karte">
       <div class="karte-kopf"><h2 style="margin:0">Unsere Termine</h2></div>
       <p class="leise">Aus diesen Spielen entstehen die Catering-Liste (Heimspiele) und der Trikot-Waschplan (alle Spiele).</p>
+      ${k.some(zeitnehmerFehlt) ? `<p><button class="knopf zweit klein" data-aktion="whatsapp-zeitnehmer">📲 Zeitnehmer gesucht (WhatsApp)</button></p>` : ""}
       ${k.length ? `<ul class="liste">${k.map(zeile).join("")}</ul>` : `<p class="leer">Keine kommenden Spiele eingetragen.</p>`}
       ${v.length ? `<details class="abstand"><summary>Vergangene Spiele (${v.length})</summary><ul class="liste">${v.reverse().map(zeile).join("")}</ul></details>` : ""}
       <div class="nur-kasse abstand">
@@ -387,10 +408,46 @@ const meinName = () => gemerkterName().trim();
 const anders = (s) => (s.artikelAnders || "").split(",").map((x) => x.trim()).filter(Boolean);
 const gebraucht = (s, a) => (a.immer !== false) !== anders(s).includes(a.name);
 
+// ---------- Vorrat und Wäsche ----------
+const slug = (t) => String(t).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ß/g, "ss").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+function vorratStand(name) {
+  const v = (Z.vorrat || []).find((x) => x.id === slug(name));
+  if (!v || v.status === "ok") return { status: "ok", v };
+  const seit = v.datum || (v.geaendert || v.erstellt || "").slice(0, 10);
+  // Wurde der Artikel nach der Meldung bei einem inzwischen gespielten Heimspiel mitgebracht, gilt er als aufgefüllt
+  const aufgefuellt = Z.catering.some((c) => {
+    if (c.artikel !== name) return false;
+    const sp = Z.spiele.find((x) => x.id === c.spielId);
+    return sp && sp.datum >= seit && sp.datum < heute();
+  });
+  return aufgefuellt ? { status: "ok", v, aufgefuellt: true } : { status: v.status, v };
+}
+
+// ---------- Zeitnehmer ----------
+const zeitnehmerPlaetze = () => Z.einstellungen.zeitnehmerPlaetze ?? 1;
+const zeitnehmerNoetig = (s) => zeitnehmerPlaetze() > 0 && (Z.einstellungen.zeitnehmerBei !== "heim" || s.heim);
+const zeitnehmerVon = (s) => (Z.zeitnehmer || []).filter((x) => x.spielId === s.id);
+const zeitnehmerFehlt = (s) => zeitnehmerNoetig(s) && zeitnehmerVon(s).length < zeitnehmerPlaetze();
+function zeitnehmerZeile(s) {
+  if (!zeitnehmerNoetig(s)) return "";
+  const zn = zeitnehmerVon(s);
+  const fehlt = zn.length < zeitnehmerPlaetze();
+  const dringend = fehlt && (datum(s.datum) - datum(heute())) / 864e5 <= 7;
+  return `<div class="zeitnehmer-zeile ${fehlt ? (dringend ? "dringend" : "offen") : "ok"}">
+    <span>⏱ <strong>Zeitnehmer:</strong> ${zn.length ? zn.map((z) => `${esc(z.name)}${darfLoeschen(z) ? ` <button class="link-knopf" data-aktion="loeschen" data-col="zeitnehmer" data-id="${z.id}" data-frage="Als Zeitnehmer austragen?">austragen</button>` : ""}`).join(", ") : "noch offen"}</span>
+    ${fehlt ? `<button class="knopf klein" data-aktion="zeitnehmer-ich" data-spiel="${s.id}">Ich mache das</button>` : ""}
+  </div>`;
+}
+
 function cateringStatus(s) {
   const e = Z.einstellungen;
   const dienst = Z.standdienst.filter((x) => x.spielId === s.id && !x.reserve).length;
-  const artikel = e.cateringArtikel.filter((a) => gebraucht(s, a)).map((a) => ({
+  // Vorrat: was leer oder knapp ist, steht beim nächsten Heimspiel auf der Mitbringliste
+  const naechstesHeim = kommende(heimspiele())[0];
+  const vorrat = (e.vorratArtikel || []).filter((a) => Z.catering.some((c) => c.spielId === s.id && c.artikel === a.name)
+    || (naechstesHeim && naechstesHeim.id === s.id && vorratStand(a.name).status !== "ok"))
+    .map((a) => ({ ...a, bedarf: 1, vorrat: true, stand: vorratStand(a.name).status }));
+  const artikel = [...e.cateringArtikel.filter((a) => gebraucht(s, a)), ...vorrat].map((a) => ({
     ...a, zugesagt: Z.catering.filter((c) => c.spielId === s.id && c.artikel === a.name).length,
   }));
   const offen = artikel.filter((a) => a.zugesagt < a.bedarf);
@@ -398,6 +455,29 @@ function cateringStatus(s) {
 }
 const pill = (ist, soll, text = `${ist}/${soll}`) =>
   `<span class="pill ${ist >= soll ? "ok" : "offen"}">${ist >= soll ? "✓ " : ""}${text}</span>`;
+
+function vorratKarte() {
+  const e = Z.einstellungen;
+  const va = e.vorratArtikel || [], wa = e.waescheArtikel || [];
+  if (!va.length && !wa.length) return "";
+  const staende = va.map((a) => ({ a, st: vorratStand(a.name) }));
+  const fehlend = staende.filter((x) => x.st.status !== "ok");
+  const unterwegs = wa.map((w) => ({ w, x: (Z.waesche || []).find((y) => y.id === slug(w)) })).filter((y) => y.x && y.x.bei);
+  const kurz = [fehlend.length ? `${fehlend.map((x) => x.a.name).join(", ")} ${fehlend.length === 1 ? "fehlt" : "fehlen"}` : "Vorrat ok", ...unterwegs.map((y) => `${y.w} bei ${y.x.bei.split(" (")[0]}`)].join(" · ");
+  const knopf = (a, status, text) => `<button class="seg ${vorratStand(a.name).status === status && (status !== "ok" || !vorratStand(a.name).v || true) ? "an" : ""} ${status}" data-aktion="vorrat-setzen" data-artikel="${esc(a.name)}" data-status="${status}">${text}</button>`;
+  return `<details class="karte vorrat-karte">
+    <summary><span>🧺 Vorrat und Wäsche</span> <span class="pill ${fehlend.length ? "offen" : "ok"}">${esc(kurz)}</span></summary>
+    <p class="leise klein">Bitte nach jedem Heimspiel kurz antippen. Was <strong>leer</strong> oder <strong>knapp</strong> ist, steht automatisch auf der Mitbringliste fürs nächste Heimspiel.</p>
+    ${va.length ? `<ul class="liste">${staende.map(({ a, st }) => `<li>
+      <div><strong>${esc(a.name)}</strong>${st.v && st.status !== "ok" && st.v.von ? `<div class="leise klein">gemeldet von ${esc(st.v.von.split(" (")[0])}</div>` : st.aufgefuellt ? `<div class="leise klein">wurde aufgefüllt</div>` : ""}</div>
+      <div class="segment">${knopf(a, "ok", "reicht")}${knopf(a, "knapp", "knapp")}${knopf(a, "leer", "leer")}</div></li>`).join("")}</ul>` : ""}
+    ${wa.length ? `<h3 class="abstand">Wäsche</h3><ul class="liste">${wa.map((w) => {
+      const x = (Z.waesche || []).find((y) => y.id === slug(w));
+      return `<li><div><strong>${esc(w)}</strong><div class="leise klein">${x && x.bei ? `bei ${esc(x.bei)} zum Waschen${x.seit ? " seit " + datumKurz(x.seit).slice(0, 6) : ""}` : "liegen in der Kiste"}</div></div>
+        ${x && x.bei ? `<button class="knopf klein zweit" data-aktion="waesche-zurueck" data-artikel="${esc(w)}">Sind zurück</button>` : `<button class="knopf klein zweit" data-aktion="waesche-mit" data-artikel="${esc(w)}">Ich nehme sie mit</button>`}</li>`;
+    }).join("")}</ul>` : ""}
+  </details>`;
+}
 
 function seiteCatering() {
   const e = Z.einstellungen;
@@ -445,10 +525,10 @@ function seiteCatering() {
       const key = `${s.id}-${i}`;
       return `<li style="display:block">
         <div class="artikel-zeile">
-          <div class="artikel-name"><strong>${esc(a.name)}</strong> ${pill(a.zugesagt, a.bedarf)}${a.hinweis ? `<span class="leise klein artikel-hinweis">je ${esc(a.hinweis)}</span>` : ""}</div>
+          <div class="artikel-name"><strong>${esc(a.name)}</strong> ${pill(a.zugesagt, a.bedarf)}${a.vorrat ? ` <span class="pill neutral">Vorrat ${a.stand === "leer" ? "leer" : a.stand === "knapp" ? "knapp" : "auffüllen"}</span>` : ""}${a.hinweis ? `<span class="leise klein artikel-hinweis">je ${esc(a.hinweis)}</span>` : ""}</div>
           <button class="${voll ? "link-knopf" : "knopf klein zweit"}" data-aktion="mitbringen-oeffnen" data-key="${key}">${voll ? "+ zusätzlich" : "Ich bringe mit"}</button>
         </div>
-        ${istAdmin() ? `<button class="link-knopf klein" data-aktion="artikel-umschalten" data-spiel="${s.id}" data-artikel="${esc(a.name)}">diesmal nicht nötig</button>` : ""}
+        ${istAdmin() && !a.vorrat ? `<button class="link-knopf klein" data-aktion="artikel-umschalten" data-spiel="${s.id}" data-artikel="${esc(a.name)}">diesmal nicht nötig</button>` : ""}
         ${zusagen.length ? `<div>${zusagen.map((c) => `<span class="chip">${esc(c.name)}${c.menge ? " · " + esc(c.menge) : ""}${darfLoeschen(c) ? `<button class="x" title="entfernen" data-aktion="loeschen" data-col="catering" data-id="${c.id}" data-frage="Zusage entfernen?">×</button>` : `<span style="width:6px"></span>`}</span>`).join("")}</div>` : ""}
         <form class="zeile mitbringen" data-form="catering" data-spiel="${s.id}" data-key="${key}" hidden>
           <input type="hidden" name="artikel" value="${esc(a.name)}">
@@ -462,6 +542,7 @@ function seiteCatering() {
       : `${pill(st.dienst, st.plaetze, `Standdienst ${st.dienst}/${st.plaetze}`)} ${!st.offen.length ? "" : st.offen.length === st.artikel.length ? `<span class="pill offen">Mitbringliste offen</span>` : `<span class="pill offen">Offen: ${st.offen.map((a) => esc(a.name)).join(", ")}</span>`}`;
     return `<details class="karte spiel-karte" data-spiel="${s.id}" id="spiel-${s.id}" ${offeneSpiele.has(s.id) ? "open" : ""}>
       <summary><div class="summary-innen">${spielZeile(s)}<div class="summary-status">${status}</div></div></summary>
+      <div class="karten-zeitnehmer">${zeitnehmerZeile(s)}</div>
       <div class="raster-2 abstand">
         <div><h3>Standdienst</h3>
           <p class="info-zeile">⏰ ${treffzeit(s) ? `Bitte spätestens um <strong>${treffzeit(s)} Uhr</strong> da sein.` : `Bitte mindestens ${Z.einstellungen.standdienstVorlauf ?? 60} Minuten vor Anpfiff da sein.`} ${esc(Z.einstellungen.standdienstInfo || "")}</p>
@@ -480,6 +561,7 @@ function seiteCatering() {
 
   return `${kopfzeile("Standdienst und Mitbringliste", "Heimspiel-Catering")}
   <div class="hinweis info">${AUSTRAGEN_HINWEIS}</div>
+  ${vorratKarte()}
   ${uebersicht}
   <div class="abstand">${k.length ? k.map(karte).join("") : `<section class="karte"><p class="leer">Kein kommendes Heimspiel eingetragen.</p></section>`}</div>
   ${v.length ? `<details class="abstand"><summary>Vergangene Heimspiele (${v.length})</summary><div class="abstand">${[...v].reverse().map(karte).join("")}</div></details>` : ""}`;
@@ -642,6 +724,7 @@ function seiteVerwaltung() {
   const e = Z.einstellungen;
   const trainer = [...Z.trainer].sort((a, b) => a.reihenfolge - b.reihenfolge);
   return `${kopfzeile("Nur für die Kassenführung", "Verwaltung")}
+  ${helferUebersicht()}
   <div class="raster-2">
     <section class="karte">
       <h2>Kader (nur Vornamen)</h2>
@@ -668,6 +751,14 @@ function seiteVerwaltung() {
           <div class="feld" style="flex-basis:200px"><label>In der Halle sein (Minuten vor Anwurf, für Standdienst und Jungs)</label><input type="number" min="0" max="180" name="standdienstVorlauf" value="${e.standdienstVorlauf ?? 60}"></div>
         </div>
         <label>Infotext Standdienst</label><textarea name="standdienstInfo" style="min-height:70px" maxlength="400">${esc(e.standdienstInfo || "")}</textarea>
+        <label class="abstand">Vorrat (je Zeile: Artikel | Menge beim Nachkaufen)</label>
+        <textarea name="vorratArtikel" style="min-height:110px">${esc((e.vorratArtikel || []).map((a) => `${a.name} | ${a.hinweis || ""}`).join("\n"))}</textarea>
+        <label class="abstand">Wäsche (ein Teil pro Zeile)</label>
+        <textarea name="waescheArtikel" style="min-height:60px">${esc((e.waescheArtikel || []).join("\n"))}</textarea>
+        <div class="ausrichten abstand">
+          <div class="feld" style="flex-basis:200px"><label>Zeitnehmer gebraucht bei</label><select name="zeitnehmerBei"><option value="alle" ${e.zeitnehmerBei !== "heim" ? "selected" : ""}>allen Spielen</option><option value="heim" ${e.zeitnehmerBei === "heim" ? "selected" : ""}>nur Heimspielen</option></select></div>
+          <div class="feld" style="flex-basis:140px"><label>Zeitnehmer pro Spiel</label><input type="number" min="0" max="3" name="zeitnehmerPlaetze" value="${e.zeitnehmerPlaetze ?? 1}"></div>
+        </div>
         <label class="schalter abstand"><input type="checkbox" name="galerieAktiv" ${e.galerieAktiv ? "checked" : ""}> Galerie für Eltern freigeben</label>
         <div>
         </div>
@@ -709,6 +800,113 @@ function seiteVerwaltung() {
       <button class="knopf klein abstand">Hinzufügen</button>
     </form></section>
   </div>`;
+}
+
+function seiteTermine() {
+  const alle = [...(Z.termine || [])].sort((a, b) => (a.datum + (a.zeit || "")).localeCompare(b.datum + (b.zeit || "")));
+  const k = alle.filter((t) => t.datum >= heute()), v = alle.filter((t) => t.datum < heute());
+  const familien = kader().map((x) => x.vorname);
+  const karte = (t) => {
+    const ant = (Z.antworten || []).filter((a) => a.terminId === t.id);
+    const zu = ant.filter((a) => a.kommt), ab = ant.filter((a) => !a.kommt);
+    const zusatz = zu.reduce((n, a) => n + (a.personen || 0), 0);
+    const kosten = t.kostenProPerson || 0;
+    const meine = meinKind() ? ant.find((a) => a.familie === meinKind()) : null;
+    const offenFam = familien.filter((f) => !ant.some((a) => a.familie === f));
+    const bezahlt = zu.filter((a) => a.bezahlt).reduce((n, a) => n + (a.personen || 0) * kosten, 0);
+    const erwartet = zusatz * kosten;
+    const personenAuswahl = (wert) => Array.from({ length: 9 }, (_, i) => `<option value="${i}" ${i === (wert ?? 0) ? "selected" : ""}>${i}</option>`).join("");
+    const eigene = meinKind() ? `<div class="antwort-box">
+        ${meine ? `<p class="gut" style="margin:0 0 8px">${meine.kommt ? `✓ Ihr seid dabei${meine.personen ? `, mit ${meine.personen} zusätzlichen ${meine.personen === 1 ? "Person" : "Personen"}` : ""}.` : "Ihr habt abgesagt."}${meine.kommt && kosten && meine.personen ? ` <span class="leise">Kosten für euch: ${euro(meine.personen * kosten)}${meine.bezahlt ? " · bezahlt ✓" : ""}</span>` : ""}</p>` : `<p style="margin:0 0 8px"><strong>Familie von ${esc(meinKind())}:</strong> Seid ihr dabei?</p>`}
+        <form class="zeile" data-form="antwort" data-termin="${t.id}">
+          <div class="feld" style="flex-basis:100%"><label>${esc(t.frage || "Wie viele zusätzliche Personen kommen mit?")}</label>
+            <select name="personen">${personenAuswahl(meine?.personen)}</select></div>
+          <button class="knopf">${meine ? "Ändern: wir kommen" : "Wir kommen"}</button>
+          <button type="button" class="knopf zweit" data-aktion="antwort-absage" data-termin="${t.id}">Wir können nicht</button>
+        </form>
+        ${kosten ? `<p class="leise klein" style="margin:8px 0 0">${euro(kosten)} pro zusätzlicher Person. Spieler und Trainer sind frei.</p>` : ""}
+      </div>`
+      : `<p class="hinweis">Bitte zuerst deinen Sohn auswählen, dann kannst du für eure Familie zu- oder absagen. <button class="link-knopf" data-aktion="name-aendern">Jetzt auswählen</button></p>`;
+    const verwaltung = istAdmin() ? `<details class="abstand"><summary>Rückmeldungen verwalten (${ant.length} von ${familien.length})</summary>
+        <p class="leise klein">Zu- und Absagen aus WhatsApp kannst du hier für jede Familie eintragen.</p>
+        <div class="tabelle-wrap"><table class="antwort-tabelle">
+          <thead><tr><th>Familie</th><th>Dabei?</th><th>+ Pers.</th>${kosten ? `<th class="betrag">Betrag</th><th>Bezahlt</th>` : ""}</tr></thead>
+          <tbody>${familien.map((f) => {
+            const a = ant.find((x) => x.familie === f);
+            const betrag = a && a.kommt ? (a.personen || 0) * kosten : 0;
+            return `<tr>
+              <td>${esc(f)}</td>
+              <td><select data-aktion="antwort-admin" data-termin="${t.id}" data-familie="${esc(f)}" data-feld="kommt">
+                <option value="" ${!a ? "selected" : ""}>offen</option><option value="ja" ${a && a.kommt ? "selected" : ""}>ja</option><option value="nein" ${a && !a.kommt ? "selected" : ""}>nein</option></select></td>
+              <td><select data-aktion="antwort-admin" data-termin="${t.id}" data-familie="${esc(f)}" data-feld="personen" ${a && a.kommt ? "" : "disabled"}>${personenAuswahl(a?.personen)}</select></td>
+              ${kosten ? `<td class="betrag">${betrag ? euro(betrag) : "–"}</td>
+              <td>${betrag ? (a.bezahlt ? `✓ <button class="link-knopf" data-aktion="antwort-bezahlt" data-termin="${t.id}" data-familie="${esc(f)}" data-wert="nein">zurück</button>` : `<button class="knopf klein" data-aktion="antwort-buchen" data-termin="${t.id}" data-familie="${esc(f)}">bezahlt + buchen</button>`) : ""}</td>` : ""}
+            </tr>`;
+          }).join("")}</tbody></table></div>
+        ${kosten ? `<p class="abstand"><strong>Eingegangen:</strong> ${euro(bezahlt)} von ${euro(erwartet)}</p>` : ""}
+        <h3 class="abstand">Termin bearbeiten</h3>
+        ${terminFormular(t)}
+        <button class="knopf klein gefahr abstand" data-aktion="loeschen" data-col="termine" data-id="${t.id}" data-frage="Termin mit allen Rückmeldungen löschen?">Termin löschen</button>
+      </details>` : "";
+    return `<section class="karte termin-karte">
+      <div class="spiel">${datumBlock(t.datum)}<div>
+        <div class="spiel-titel">${esc(t.titel)}</div>
+        <div class="leise">${t.zeit ? esc(t.zeit) + " Uhr" : ""}${t.ort ? " · " + esc(t.ort) : ""}</div></div></div>
+      ${t.beschreibung ? `<div class="termin-text">${esc(t.beschreibung).replace(/\n/g, "<br>")}</div>` : ""}
+      <div class="termin-stand">
+        <span class="pill ok">${zu.length} dabei</span> <span class="pill neutral">${ab.length} abgesagt</span> <span class="pill offen">${offenFam.length} offen</span>
+        <span class="leise">· ${zusatz} zusätzliche Personen</span>
+      </div>
+      ${t.datum >= heute() ? eigene : ""}
+      ${verwaltung}
+    </section>`;
+  };
+  return `${kopfzeile("Feiern, Turniere, Elternabende", "Termine")}
+  ${k.length ? k.map(karte).join("") : `<section class="karte"><p class="leer">Gerade steht kein Termin an.</p></section>`}
+  ${v.length ? `<details class="abstand"><summary>Vergangene Termine (${v.length})</summary><div class="abstand">${[...v].reverse().map(karte).join("")}</div></details>` : ""}
+  ${istAdmin() ? `<section class="karte abstand"><h2>Neuen Termin anlegen</h2>${terminFormular(null)}</section>` : ""}`;
+}
+
+function terminFormular(t) {
+  return `<form class="zeile" data-form="termin" ${t ? `data-id="${t.id}"` : ""}>
+    <div class="feld" style="flex-basis:220px"><label>Titel</label><input type="text" name="titel" required maxlength="80" value="${esc(t?.titel || "")}"></div>
+    <div class="feld" style="flex-basis:150px"><label>Datum</label><input type="date" name="datum" required value="${esc(t?.datum || "")}"></div>
+    <div class="feld" style="flex-basis:110px"><label>Uhrzeit</label><input type="time" name="zeit" value="${esc(t?.zeit || "")}"></div>
+    <div class="feld" style="flex-basis:200px"><label>Ort</label><input type="text" name="ort" maxlength="120" value="${esc(t?.ort || "")}"></div>
+    <div class="feld" style="flex-basis:100%"><label>Beschreibung</label><textarea name="beschreibung" maxlength="2000">${esc(t?.beschreibung || "")}</textarea></div>
+    <div class="feld" style="flex-basis:160px"><label>Kosten je zusätzl. Person (€)</label><input type="text" inputmode="decimal" name="kosten" value="${t?.kostenProPerson ? (t.kostenProPerson / 100).toFixed(2).replace(".", ",") : ""}" placeholder="0,00"></div>
+    <div class="feld" style="flex-basis:300px"><label>Frage an die Eltern</label><input type="text" name="frage" maxlength="160" value="${esc(t?.frage || "Wie viele zusätzliche Personen (Eltern, Geschwister) kommen mit?")}"></div>
+    <button class="knopf">${t ? "Speichern" : "Termin anlegen"}</button>
+  </form>`;
+}
+
+// ---------- Helfer-Übersicht (nur Kasse) ----------
+const familieAusName = (name) => { const m = /\(([^()]+)\)\s*$/.exec(name || ""); return m ? m[1].trim() : null; };
+function helferUebersicht() {
+  const namen = kader().map((k) => k.vorname);
+  const zeilen = Object.fromEntries(namen.map((n) => [n, { standdienst: 0, mitgebracht: 0, gefahren: 0, zeitnehmer: 0, trikots: 0 }]));
+  const ohne = {};
+  const zaehle = (name, feld) => {
+    const f = familieAusName(name);
+    if (f && zeilen[f]) zeilen[f][feld]++;
+    else { const n = (name || "?").trim(); ohne[n] = (ohne[n] || 0) + 1; }
+  };
+  Z.standdienst.filter((x) => !x.reserve).forEach((x) => zaehle(x.name, "standdienst"));
+  Z.catering.forEach((x) => zaehle(x.name, "mitgebracht"));
+  Z.fahrten.forEach((x) => zaehle(x.fahrer, "gefahren"));
+  (Z.zeitnehmer || []).forEach((x) => zaehle(x.name, "zeitnehmer"));
+  trikotPlan().filter((p) => p.erledigt).forEach((p) => { const f = p.familie.replace(/^Familie von /, ""); if (zeilen[f]) zeilen[f].trikots++; });
+  const summe = (z) => z.standdienst + z.mitgebracht + z.gefahren + z.zeitnehmer + z.trikots;
+  const liste = namen.map((n) => ({ n, z: zeilen[n], s: summe(zeilen[n]) })).sort((a, b) => a.s - b.s || a.n.localeCompare(b.n, "de"));
+  return `<section class="karte abstand">
+    <h2>Helfer-Übersicht</h2>
+    <p class="leise klein">Nur für die Kassenführung sichtbar. Gezählt wird über den Namen in Klammern, z. B. „Peggy (Piet)“. Oben stehen die Familien, die bisher am wenigsten gemacht haben.</p>
+    <div class="tabelle-wrap"><table class="helfer-tabelle">
+      <thead><tr><th>Familie</th><th>Stand&shy;dienst</th><th>Mit&shy;gebracht</th><th>Gefahren</th><th>Zeit&shy;nehmer</th><th>Trikots</th><th>Gesamt</th></tr></thead>
+      <tbody>${liste.map(({ n, z, s }) => `<tr class="${s === 0 ? "null" : ""}"><td>${esc(n)}</td><td>${z.standdienst}</td><td>${z.mitgebracht}</td><td>${z.gefahren}</td><td>${z.zeitnehmer}</td><td>${z.trikots}</td><td><strong>${s}</strong></td></tr>`).join("")}</tbody>
+    </table></div>
+    ${Object.keys(ohne).length ? `<p class="leise klein abstand">Ohne Zuordnung: ${Object.entries(ohne).map(([n, c]) => `${esc(n)} (${c})`).join(", ")}</p>` : ""}
+  </section>`;
 }
 
 function seiteDatenschutz() {
@@ -767,6 +965,7 @@ function cateringText(s) {
   z.push(dienst.length ? `${frei ? "" : "✅ "}${dienst.join(", ")}` : "");
   if (frei) z.push(`❗ noch ${frei} ${frei === 1 ? "Platz" : "Plätze"} frei`);
   if ((e.reservePlaetze ?? 1) > 0) z.push(reserve.length ? `Reserve: ${reserve.join(", ")}` : "Reserve: noch frei");
+  if (zeitnehmerNoetig(s)) z.push(`⏱ Zeitnehmer: ${zeitnehmerVon(s).map((x) => x.name).join(", ") || "❗ noch offen"}`);
   z.push("", "🍰 Mitbringliste:");
   for (const a of cateringStatus(s).artikel) {
     const zus = Z.catering.filter((c) => c.spielId === s.id && c.artikel === a.name);
@@ -881,6 +1080,7 @@ function fahrtenText(s) {
   const z = [`🚗 Fahrgemeinschaften Auswärtsspiel ${wtDatum(s)}${s.zeit ? " " + s.zeit + " Uhr" : ""} bei ${s.gegner}`];
   if (s.halle) z.push(`📍 ${s.halle}`);
   if (treffzeit(s)) z.push(`⏰ Jungs spätestens um ${treffzeit(s)} Uhr in der Halle`);
+  if (zeitnehmerNoetig(s)) z.push(`⏱ Zeitnehmer: ${zeitnehmerVon(s).map((x) => x.name).join(", ") || "❗ noch offen"}`);
   z.push("");
   if (!st.fahrten.length) z.push("❗ Bisher bietet noch niemand Plätze an.");
   for (const f of st.fahrten) {
@@ -923,6 +1123,7 @@ function seiteFahrten() {
       <summary><div class="summary-innen">${spielZeile(s)}<div class="summary-status">${status}</div></div></summary>
       <div class="fahrt-inhalt">
         ${hallenZeile(s)}
+        ${zeitnehmerZeile(s)}
         ${fahrten ? `<ul class="liste">${fahrten}</ul>` : `<p class="leer">Noch bietet niemand Plätze an.</p>`}
         <details class="abstand"><summary>Ich fahre und habe Plätze frei</summary>
           <form class="zeile" data-form="fahrt" data-spiel="${s.id}">
@@ -1056,7 +1257,7 @@ function mehrMenue() {
   const box = document.createElement("div");
   box.className = "lightbox sheet-hinter";
   const links = [
-    ["#/kasse", "💶", "Mannschaftskasse"], ["#/trikots", "👕", "Trikots waschen"], ["#/mannschaft", "👥", "Mannschaft"],
+    ["#/termine", "📅", "Termine"], ["#/kasse", "💶", "Mannschaftskasse"], ["#/trikots", "👕", "Trikots waschen"], ["#/mannschaft", "👥", "Mannschaft"],
     ...(Z.einstellungen.galerieAktiv || istAdmin() ? [["#/galerie", "📷", "Galerie"]] : []),
     ...(istAdmin() ? [["#/verwaltung", "⚙️", "Verwaltung"]] : []),
   ];
@@ -1145,6 +1346,20 @@ inhalt.addEventListener("submit", async (ev) => {
         await api("POST", "/api/c/catering", { ...w, name, spielId: form.dataset.spiel });
         await neuLaden("Danke für die Zusage"); break;
       }
+      case "antwort": {
+        if (!meinKind()) throw new Error("Bitte zuerst deinen Sohn auswählen");
+        const id = `${form.dataset.termin}-${slug(meinKind())}`;
+        await api("PUT", "/api/c/antworten/" + id, { terminId: form.dataset.termin, familie: meinKind(), kommt: true, personen: Number(w.personen) || 0, von: meinName() });
+        await neuLaden("Danke für deine Rückmeldung"); break;
+      }
+      case "termin": {
+        const kosten = w.kosten.trim() ? inCent(w.kosten) : 0;
+        if (!Number.isFinite(kosten) || kosten < 0) throw new Error("Kosten bitte im Format 5,00 eingeben");
+        const daten = { titel: w.titel, datum: w.datum, zeit: w.zeit, ort: w.ort, beschreibung: w.beschreibung, frage: w.frage, kostenProPerson: kosten };
+        if (form.dataset.id) await api("PUT", "/api/c/termine/" + form.dataset.id, daten);
+        else await api("POST", "/api/c/termine", daten);
+        await neuLaden("Termin gespeichert"); break;
+      }
       case "fahrt": {
         const name = await nameSicherstellen();
         offeneFahrten?.add(form.dataset.spiel);
@@ -1203,6 +1418,10 @@ inhalt.addEventListener("submit", async (ev) => {
           standdienstPlaetze: w.standdienstPlaetze,
           reservePlaetze: w.reservePlaetze,
           galerieAktiv: w.galerieAktiv === "on",
+          vorratArtikel: zeilen(w.vorratArtikel).map((z) => { const [name, hinweis] = z.split("|").map((x) => (x || "").trim()); return { name, hinweis: hinweis || "" }; }),
+          waescheArtikel: zeilen(w.waescheArtikel),
+          zeitnehmerBei: w.zeitnehmerBei,
+          zeitnehmerPlaetze: w.zeitnehmerPlaetze,
           standdienstVorlauf: w.standdienstVorlauf,
           standdienstInfo: w.standdienstInfo,
           liga: w.liga,
@@ -1265,6 +1484,46 @@ inhalt.addEventListener("click", async (ev) => {
       f.scrollIntoView({ behavior: "smooth", block: "center" });
     } else if (a === "spiel-abbrechen") {
       setTimeout(() => { $("#spiel-titel").textContent = "Spiel hinzufügen"; inhalt.querySelector('form[data-form="spiel"]').elements.id.value = ""; });
+    } else if (a === "zeitnehmer-ich") {
+      const name = await nameSicherstellen();
+      el.disabled = true;
+      await api("POST", "/api/c/zeitnehmer", { spielId: el.dataset.spiel, name });
+      await neuLaden("Danke, du bist Zeitnehmer ⏱");
+    } else if (a === "whatsapp-zeitnehmer") {
+      const fehlend = kommende(spieleSortiert()).filter(zeitnehmerFehlt);
+      teilen(["⏱ Zeitnehmer gesucht!", Z.einstellungen.zeitnehmerHinweis || "", "",
+        ...fehlend.map((s) => `• ${wtDatum(s)}${s.zeit ? " " + s.zeit + " Uhr" : ""} ${s.heim ? "gegen" : "bei"} ${s.gegner}`),
+        "", `Eintragen: ${location.origin}/#/spiele`].filter((x, i, arr) => !(x === "" && arr[i - 1] === "")).join("\n"));
+    } else if (a === "vorrat-setzen") {
+      const name = await nameSicherstellen();
+      await api("PUT", "/api/c/vorrat/" + slug(el.dataset.artikel), { artikel: el.dataset.artikel, status: el.dataset.status, von: name, datum: heute() });
+      await neuLaden(el.dataset.status === "ok" ? `${el.dataset.artikel}: reicht` : `${el.dataset.artikel} kommt auf die Mitbringliste`);
+    } else if (a === "waesche-mit") {
+      const name = await nameSicherstellen();
+      await api("PUT", "/api/c/waesche/" + slug(el.dataset.artikel), { artikel: el.dataset.artikel, bei: name, seit: heute() });
+      await neuLaden("Danke fürs Waschen 🧺");
+    } else if (a === "waesche-zurueck") {
+      await api("PUT", "/api/c/waesche/" + slug(el.dataset.artikel), { artikel: el.dataset.artikel, bei: "", seit: "" });
+      await neuLaden("Wieder in der Kiste");
+    } else if (a === "antwort-absage") {
+      if (!meinKind()) throw new Error("Bitte zuerst deinen Sohn auswählen");
+      await api("PUT", `/api/c/antworten/${el.dataset.termin}-${slug(meinKind())}`, { terminId: el.dataset.termin, familie: meinKind(), kommt: false, personen: 0, von: meinName() });
+      await neuLaden("Schade, Absage ist eingetragen");
+    } else if (a === "antwort-buchen" || a === "antwort-bezahlt") {
+      const tm = Z.termine.find((x) => x.id === el.dataset.termin);
+      const id = `${tm.id}-${slug(el.dataset.familie)}`;
+      const ant = Z.antworten.find((x) => x.id === id);
+      if (a === "antwort-buchen") {
+        const betrag = (ant.personen || 0) * (tm.kostenProPerson || 0);
+        await api("POST", "/api/c/kasse", { datum: heute(), art: "einnahme", betrag, zweck: `${tm.titel}: Familie von ${el.dataset.familie}`, kategorie: "Mannschaftsfeier", kanal: "Bar", beleg: "" });
+        await api("PUT", "/api/c/antworten/" + id, { bezahlt: true });
+        await neuLaden(`${euro(betrag)} gebucht`);
+      } else {
+        await api("PUT", "/api/c/antworten/" + id, { bezahlt: false });
+        await neuLaden("Als unbezahlt markiert. Die Buchung bitte in der Kasse löschen, falls nötig.");
+      }
+    } else if (a === "name-aendern") {
+      await willkommen({ nurName: true }); zeigen();
     } else if (a === "mitfahren-schnell") {
       el.disabled = true;
       await api("POST", "/api/c/mitfahrer", { fahrtId: el.dataset.fahrt, name: meinKind(), eingetragenVon: meinName() });
@@ -1342,6 +1601,18 @@ inhalt.addEventListener("toggle", (ev) => {
 inhalt.addEventListener("change", async (ev) => {
   const el = ev.target;
   try {
+    if (el.dataset.aktion === "antwort-admin") {
+      const id = `${el.dataset.termin}-${slug(el.dataset.familie)}`;
+      const alt = Z.antworten.find((x) => x.id === id);
+      if (el.dataset.feld === "kommt") {
+        if (el.value === "") { if (alt) await api("DELETE", "/api/c/antworten/" + id); }
+        else await api("PUT", "/api/c/antworten/" + id, { terminId: el.dataset.termin, familie: el.dataset.familie, kommt: el.value === "ja", personen: el.value === "ja" ? (alt?.personen || 0) : 0, von: "Kasse" });
+      } else {
+        await api("PUT", "/api/c/antworten/" + id, { terminId: el.dataset.termin, familie: el.dataset.familie, kommt: true, personen: Number(el.value) || 0 });
+      }
+      await neuLaden("Gespeichert");
+      return;
+    }
     if (el.dataset.aktion === "trikot-erledigt") {
       await api("PUT", "/api/c/trikots/" + el.dataset.id, { erledigt: el.checked });
       await neuLaden(el.checked ? "Als gewaschen markiert" : "Markierung entfernt");

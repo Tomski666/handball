@@ -11,11 +11,14 @@ Hosting über GitHub und Netlify (Gratis-Tarif), Daten in Netlify Blobs. Kein Fr
 | Mannschaft | Text, Liga, Kader (nur Vornamen), Trainer, Trainingszeiten. Ändern nur Kasse |
 | Spiele | handball.net-Widget (Spielplan, Tabelle) und eigene Terminliste. Termine pflegt die Kasse |
 | Heimspiel-Catering | Artikel mit „bei Bedarf“ (z. B. Kaffee) stehen nur auf der Liste, wenn die Kasse sie beim Spiel zuschaltet. Pro Heimspiel Standdienst (Plätze begrenzt) und Mitbringliste. Alle Eltern tragen sich ein und entfernen nur ihre eigenen Einträge. 2 feste Plätze plus Reserve. Knopf „Text für WhatsApp“ |
+| Vorrat und Wäsche | Auf der Catering-Seite: Kaffee, Milch, Zucker, Becher, Spülmittel mit „reicht / knapp / leer“. Was knapp oder leer ist, steht automatisch auf der Mitbringliste fürs nächste Heimspiel. Wäsche: wer Geschirrtücher und Spüllappen zum Waschen mitnimmt |
+| Zeitnehmer | Bei jedem Spiel (einstellbar: alle oder nur Heimspiele) eine Zeile „Zeitnehmer: noch offen / Name“ mit „Ich mache das“. Orange wenn offen, rot ab 7 Tage vorher. WhatsApp-Text unter Spiele |
+| Termine | Feiern, Elternabende usw. Eltern sagen für ihre Familie zu oder ab und geben zusätzliche Personen an. Die Kasse trägt Antworten aus WhatsApp in „Rückmeldungen verwalten“ ein und bucht Zahlungen direkt in die Kasse |
 | Fahrten | Fahrgemeinschaften zu Auswärtsspielen: Plätze anbieten, Jungs eintragen, WhatsApp-Text |
 | Trikots | Waschplan reihum nach Kader, Tausch und „erledigt“ durch alle Eltern |
 | Kasse | Eltern sehen zuerst nur Kassenstand und letzte Buchungen, Details auf Knopfdruck. Alle sehen Stand, Buchungen, Einnahmen nach Kanal, Ausgaben nach Zweck, CSV-Export, Ergebnis je Heimspiel. Buchen nur Kasse, inklusive „Heimspiel abrechnen“ mit fertigem WhatsApp-Text |
 | Galerie | Erst sichtbar, wenn die Kasse sie unter Verwaltung freigibt. Dann laden alle Fotos hoch (werden im Browser verkleinert, Standortdaten entfernt). Melden blendet ein Foto sofort aus, die Kasse gibt frei oder löscht |
-| Verwaltung | Nur Kasse: Kader, Trainer, Anfangsbestand, Mitbringliste, Kategorien, Widget-Token |
+| Verwaltung | Nur Kasse: Kader, Trainer, Anfangsbestand, Mitbringliste, Vorrat, Wäsche, Zeitnehmer, Kategorien, Widget-Token. Dazu die Helfer-Übersicht (wer hat wie oft Standdienst, Mitbringen, Fahren, Zeitnehmer, Trikots übernommen), gezählt über den Sohn in Klammern hinter dem Namen |
 
 Zwei Passwörter: Das **Eltern-Passwort** erlaubt Lesen und Eintragen. Das **Kassen-Passwort** (nur Tomski und Peggy) erlaubt zusätzlich Buchungen und Verwaltung.
 
