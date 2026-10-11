@@ -1,3 +1,5 @@
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+
 document.getElementById("login").addEventListener("submit", async (e) => {
   e.preventDefault();
   const fehler = document.getElementById("fehler");

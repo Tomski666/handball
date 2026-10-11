@@ -79,7 +79,7 @@ const STANDARD_EINSTELLUNGEN = {
     { name: "Milch", bedarf: 2, hinweis: "1 Liter H-Milch" },
   ],
   standdienstVorlauf: 60, // Minuten vor Anpfiff
-  standdienstInfo: "Die Kinder sind ebenfalls eine Stunde vor Anpfiff da. Aufgaben: Stand aufbauen, verkaufen und kassieren, am Ende abbauen.",
+  standdienstInfo: "Die Jungs sind ebenfalls eine Stunde vor Anpfiff da. Aufgaben: Stand aufbauen, verkaufen und kassieren, am Ende abbauen.",
   kassenKategorien: ["Heimspiel-Catering", "Getränke OTV", "Einkauf Catering", "Mannschaftsfeier", "Geschenke", "Turnier/Fahrten", "Sonstiges"],
   kassenKanaele: ["Bar", "PayPal", "Überweisung", "Karte/SumUp"],
   widgetToken: "",
@@ -88,7 +88,7 @@ const STANDARD_EINSTELLUNGEN = {
 
 // Spielplan Saison 2026/27 (Regionsoberliga männliche C, Meisterrunde) und Kader nur mit Vornamen.
 // Werden beim ersten Start angelegt bzw. per Datenstand-Abgleich ergänzt, ohne Bestehendes zu löschen.
-const DATENSTAND = 5;
+const DATENSTAND = 6;
 
 // Kassenbuch auf Papier bis 10.10.2026 (Anfangsbestand 812,08 € am 14.09.2026), einmalig übernommen
 const KASSE_PAPIER = {
@@ -217,6 +217,10 @@ async function abgleich(store, e) {
     if (t.rolle === "Trainerin" && t.name.startsWith("Marte")) await store.setJSON(`trainer/${t.id}`, { ...t, rolle: "Trainer" });
   }
   const neu = { ...e, datenstand: DATENSTAND };
+  // Datenstand 6: "Kinder" heißt jetzt "Jungs" (nur im unveränderten Standardtext)
+  if ((e.datenstand || 1) < 6 && typeof e.standdienstInfo === "string") {
+    neu.standdienstInfo = e.standdienstInfo.replace("Die Kinder sind", "Die Jungs sind");
+  }
   // Datenstand 5: Papier-Kassenbuch übernehmen. Anfangsbestand nur, wenn noch der Platzhalter (850 € am 09.10.) steht;
   // Buchungen nur, wenn es keine gleiche Buchung (Datum, Art, Betrag) schon gibt.
   if ((e.datenstand || 1) < 5) {

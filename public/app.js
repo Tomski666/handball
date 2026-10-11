@@ -132,7 +132,7 @@ function abfahrtVorschlag(s) {
 }
 function hallenZeile(s) {
   const t = treffzeit(s);
-  return `<p class="info-zeile">⏰ ${t ? `Die Kinder müssen spätestens um <strong>${t} Uhr</strong> in der Halle sein` : `Die Kinder müssen ${Z.einstellungen.standdienstVorlauf ?? 60} Minuten vor Anwurf in der Halle sein`} (${Z.einstellungen.standdienstVorlauf ?? 60} Minuten vor Anwurf). Abfahrt bitte entsprechend früher planen.</p>`;
+  return `<p class="info-zeile">⏰ ${t ? `Die Jungs müssen spätestens um <strong>${t} Uhr</strong> in der Halle sein` : `Die Jungs müssen ${Z.einstellungen.standdienstVorlauf ?? 60} Minuten vor Anwurf in der Halle sein`} (${Z.einstellungen.standdienstVorlauf ?? 60} Minuten vor Anwurf). Abfahrt bitte entsprechend früher planen.</p>`;
 }
 const AUSTRAGEN_HINWEIS = "Austragen geht nur auf dem Handy, mit dem du dich eingetragen hast. Sonst kurz in die WhatsApp-Gruppe schreiben.";
 const kopfzeile = (unter, titel) => `<p class="unterzeile">${unter}</p><h1>${titel}</h1>`;
@@ -280,7 +280,7 @@ function auswaertsKarte(s) {
     ${kindDabei ? `<p class="gut">✓ ${esc(kind)} fährt mit.</p>` : ""}
     <div class="hero-aktionen">
       ${!ichFahre ? `<a class="knopf ${st.fahrten.length ? "zweit " : ""}gross" href="#/fahrten" data-aktion="fahrt-anbieten" data-id="${s.id}">🚗 Ich fahre und habe Plätze frei</a>` : `<p class="gut" style="margin:0">✓ Du fährst.</p>`}
-      ${!kind && mitPlatz.length ? `<a class="knopf zweit gross" href="#/fahrten">Mein Kind fährt mit</a>` : ""}
+      ${!kind && mitPlatz.length ? `<a class="knopf zweit gross" href="#/fahrten">Mein Sohn fährt mit</a>` : ""}
     </div>
   </section>`;
 }
@@ -619,7 +619,7 @@ function seiteGalerie() {
   ${istAdmin() && gemeldet ? `<div class="hinweis">${gemeldet} Foto${gemeldet === 1 ? " wurde" : "s wurden"} zur Prüfung gemeldet und ist für Eltern ausgeblendet. Rot markiert, bitte prüfen.</div>` : ""}
   <details class="karte" ${galerie.length ? "" : "open"}>
     <summary>Fotos hochladen</summary>
-    <div class="hinweis">Bitte nur Fotos hochladen, mit denen die abgebildeten Kinder und deren Eltern einverstanden sind. Keine Fotos aus der Umkleide, keine peinlichen Situationen. Fotos werden vor dem Hochladen verkleinert, Standortdaten werden dabei entfernt.</div>
+    <div class="hinweis">Bitte nur Fotos hochladen, mit denen die abgebildeten Jungs und deren Eltern einverstanden sind. Keine Fotos aus der Umkleide, keine peinlichen Situationen. Fotos werden vor dem Hochladen verkleinert, Standortdaten werden dabei entfernt.</div>
     <form class="zeile" data-form="galerie">
       <div class="feld"><label>Album</label><input type="text" name="album" list="alben" required maxlength="80" placeholder="z. B. 10.10.2026 Bergischer HC III"><datalist id="alben">${albumVorschlaege.map((a) => `<option value="${esc(a)}">`).join("")}</datalist></div>
       <div class="feld"><label>Dein Name</label><input type="text" name="name" maxlength="60" value="${esc(gemerkterName())}"></div>
@@ -664,7 +664,7 @@ function seiteVerwaltung() {
           <div class="feld"><label>Reserveplätze</label><input type="number" min="0" max="5" name="reservePlaetze" value="${e.reservePlaetze ?? 1}"></div>
         </div>
         <div class="ausrichten abstand">
-          <div class="feld" style="flex-basis:200px"><label>In der Halle sein (Minuten vor Anwurf, für Standdienst und Kinder)</label><input type="number" min="0" max="180" name="standdienstVorlauf" value="${e.standdienstVorlauf ?? 60}"></div>
+          <div class="feld" style="flex-basis:200px"><label>In der Halle sein (Minuten vor Anwurf, für Standdienst und Jungs)</label><input type="number" min="0" max="180" name="standdienstVorlauf" value="${e.standdienstVorlauf ?? 60}"></div>
         </div>
         <label>Infotext Standdienst</label><textarea name="standdienstInfo" style="min-height:70px" maxlength="400">${esc(e.standdienstInfo || "")}</textarea>
         <label class="schalter abstand"><input type="checkbox" name="galerieAktiv" ${e.galerieAktiv ? "checked" : ""}> Galerie für Eltern freigeben</label>
@@ -879,7 +879,7 @@ function fahrtenText(s) {
   const st = fahrtStatus(s);
   const z = [`🚗 Fahrgemeinschaften Auswärtsspiel ${wtDatum(s)}${s.zeit ? " " + s.zeit + " Uhr" : ""} bei ${s.gegner}`];
   if (s.halle) z.push(`📍 ${s.halle}`);
-  if (treffzeit(s)) z.push(`⏰ Kinder spätestens um ${treffzeit(s)} Uhr in der Halle`);
+  if (treffzeit(s)) z.push(`⏰ Jungs spätestens um ${treffzeit(s)} Uhr in der Halle`);
   z.push("");
   if (!st.fahrten.length) z.push("❗ Bisher bietet noch niemand Plätze an.");
   for (const f of st.fahrten) {
@@ -911,7 +911,7 @@ function seiteFahrten() {
         </div>
         <div>${mit.map((m) => `<span class="chip">${esc(m.name)}${darfLoeschen(m) ? `<button class="x" title="austragen" data-aktion="loeschen" data-col="mitfahrer" data-id="${m.id}" data-frage="${esc(m.name)} austragen?">×</button>` : `<span style="width:6px"></span>`}</span>`).join("")}</div>
         ${frei > 0 ? `<form class="zeile mitfahren" data-form="mitfahrer" data-fahrt="${f.id}">
-          <div class="feld"><select name="name" aria-label="Kind auswählen">${kinder.length ? `<option value="">Kind auswählen …</option>${kinder.map((n) => `<option ${n === meinKind() ? "selected" : ""}>${esc(n)}</option>`).join("")}` : `<option value="">alle Kinder eingetragen</option>`}<option value="__andere">jemand anderes …</option></select></div>
+          <div class="feld"><select name="name" aria-label="Spieler auswählen">${kinder.length ? `<option value="">Spieler auswählen …</option>${kinder.map((n) => `<option ${n === meinKind() ? "selected" : ""}>${esc(n)}</option>`).join("")}` : `<option value="">alle Jungs eingetragen</option>`}<option value="__andere">jemand anderes …</option></select></div>
           <button class="knopf klein">Mitfahren</button></form>` : ""}
       </li>`;
     }).join("");
@@ -936,7 +936,7 @@ function seiteFahrten() {
     </details>`;
   };
   return `${kopfzeile("Gemeinsam zu den Auswärtsspielen", "Fahrgemeinschaften")}
-  <div class="hinweis info">Wer fährt, bietet Plätze an. Wer mitfahren möchte, trägt sein Kind bei einer Fahrt ein. ${AUSTRAGEN_HINWEIS}</div>
+  <div class="hinweis info">Wer fährt, bietet Plätze an. Wer mitfahren möchte, trägt seinen Sohn bei einer Fahrt ein. ${AUSTRAGEN_HINWEIS}</div>
   ${k.length ? k.map(karte).join("") : `<section class="karte"><p class="leer">Kein kommendes Auswärtsspiel eingetragen.</p></section>`}
   ${v.length ? `<details class="abstand"><summary>Vergangene Auswärtsspiele (${v.length})</summary><div class="abstand">${[...v].reverse().map(karte).join("")}</div></details>` : ""}`;
 }
@@ -1011,7 +1011,7 @@ function willkommen({ nurName = false } = {}) {
         </ul>`}
       <label for="w-name">Dein Vorname</label>
       <input id="w-name" type="text" maxlength="40" required value="${esc(meinVorname())}" placeholder="z. B. Peggy" autocomplete="given-name">
-      <label for="w-kind" class="abstand" style="margin-top:12px">Dein Kind in der Mannschaft</label>
+      <label for="w-kind" class="abstand" style="margin-top:12px">Dein Sohn in der Mannschaft</label>
       <select id="w-kind"><option value="">bitte wählen …</option>${kader().map((k) => `<option ${k.vorname === meinKind() ? "selected" : ""}>${esc(k.vorname)}</option>`).join("")}</select>
       ${nurName ? "" : installHinweis()}
       <div class="ausrichten abstand" style="margin-top:16px">
@@ -1153,7 +1153,7 @@ inhalt.addEventListener("submit", async (ev) => {
       case "mitfahrer": {
         let kind = w.name;
         if (kind === "__andere") kind = (prompt("Wer fährt mit? (nur Vorname)") || "").trim();
-        if (!kind) throw new Error("Bitte ein Kind auswählen");
+        if (!kind) throw new Error("Bitte einen Spieler auswählen");
         await api("POST", "/api/c/mitfahrer", { fahrtId: form.dataset.fahrt, name: kind, eingetragenVon: meinName() });
         await neuLaden(`${kind} fährt mit`); break;
       }
