@@ -12,3 +12,10 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "same-origin"
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+
+# Service Worker immer frisch laden
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+    Service-Worker-Allowed = "/"

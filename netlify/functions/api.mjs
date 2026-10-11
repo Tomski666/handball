@@ -16,7 +16,7 @@ const COLLECTIONS = {
   spiele: {
     schreiben: "kasse",
     felder: { datum: { typ: "datum", pflicht: true }, zeit: { typ: "zeit" }, gegner: { ...S(80), pflicht: true },
-      heim: { typ: "bool" }, halle: S(80), hinweis: S(300) },
+      heim: { typ: "bool" }, halle: S(80), hinweis: S(300), artikelAnders: S(300) },
   },
   kader: {
     schreiben: "kasse",
@@ -75,7 +75,7 @@ const STANDARD_EINSTELLUNGEN = {
     { name: "Kuchen", bedarf: 2, hinweis: "1 Blech oder 1 großer Kuchen" },
     { name: "Muffins", bedarf: 2, hinweis: "ca. 12 Stück" },
     { name: "Laugengebäck", bedarf: 1, hinweis: "ca. 15 Stück" },
-    { name: "Kaffee", bedarf: 1, hinweis: "1 Packung gemahlen (500 g)" },
+    { name: "Kaffee", bedarf: 1, hinweis: "1 Packung gemahlen (500 g)", immer: false },
     { name: "Milch", bedarf: 2, hinweis: "1 Liter H-Milch" },
   ],
   standdienstVorlauf: 60, // Minuten vor Anpfiff
@@ -88,7 +88,22 @@ const STANDARD_EINSTELLUNGEN = {
 
 // Spielplan Saison 2026/27 (Regionsoberliga männliche C, Meisterrunde) und Kader nur mit Vornamen.
 // Werden beim ersten Start angelegt bzw. per Datenstand-Abgleich ergänzt, ohne Bestehendes zu löschen.
-const DATENSTAND = 4;
+const DATENSTAND = 5;
+
+// Kassenbuch auf Papier bis 10.10.2026 (Anfangsbestand 812,08 € am 14.09.2026), einmalig übernommen
+const KASSE_PAPIER = {
+  anfangsbestand: 81208,
+  anfangsdatum: "2026-09-14",
+  buchungen: [
+    { datum: "2026-09-18", art: "ausgabe", betrag: 11000, zweck: "Ausgaben Turnier 20.09.26", kategorie: "Turnier/Fahrten", kanal: "Bar", beleg: "Kassenbuch Papier ①" },
+    { datum: "2026-09-18", art: "ausgabe", betrag: 520, zweck: "Ausgaben Turnier 20.09.26", kategorie: "Turnier/Fahrten", kanal: "Bar", beleg: "Kassenbuch Papier ②" },
+    { datum: "2026-09-20", art: "einnahme", betrag: 32160, zweck: "Einnahmen Turnier 20.09.26", kategorie: "Turnier/Fahrten", kanal: "Bar", beleg: "Kassenbuch Papier" },
+    { datum: "2026-09-20", art: "einnahme", betrag: 1250, zweck: "Spendenkasse", kategorie: "Sonstiges", kanal: "Bar", beleg: "Kassenbuch Papier" },
+    { datum: "2026-09-25", art: "ausgabe", betrag: 10000, zweck: "Therabänder etc.", kategorie: "Sonstiges", kanal: "Bar", beleg: "Kassenbuch Papier ③" },
+    { datum: "2026-09-25", art: "ausgabe", betrag: 10000, zweck: "Pinocchio Pizza", kategorie: "Mannschaftsfeier", kanal: "Bar", beleg: "Kassenbuch Papier ④" },
+    { datum: "2026-10-10", art: "einnahme", betrag: 13050, zweck: "Heimspiel-Catering gegen Bergischer HC III", kategorie: "Heimspiel-Catering", kanal: "Bar", beleg: "Kassenbuch Papier", heimspiel: true },
+  ],
+};
 const STARTDATEN = {
   spiele: [
     { datum: "2026-10-10", zeit: "14:30", gegner: "Bergischer HC III", heim: true, halle: "OTV-Sporthalle", hinweis: "" },
@@ -202,11 +217,33 @@ async function abgleich(store, e) {
     if (t.rolle === "Trainerin" && t.name.startsWith("Marte")) await store.setJSON(`trainer/${t.id}`, { ...t, rolle: "Trainer" });
   }
   const neu = { ...e, datenstand: DATENSTAND };
+  // Datenstand 5: Papier-Kassenbuch übernehmen. Anfangsbestand nur, wenn noch der Platzhalter (850 € am 09.10.) steht;
+  // Buchungen nur, wenn es keine gleiche Buchung (Datum, Art, Betrag) schon gibt.
+  if ((e.datenstand || 1) < 5) {
+    if ((e.anfangsbestand ?? 85000) === 85000 && (e.anfangsdatum ?? "2026-10-09") === "2026-10-09") {
+      neu.anfangsbestand = KASSE_PAPIER.anfangsbestand;
+      neu.anfangsdatum = KASSE_PAPIER.anfangsdatum;
+    }
+    const kasse = await liste(store, "kasse");
+    const alleSpiele = await liste(store, "spiele");
+    for (const b of KASSE_PAPIER.buchungen) {
+      if (kasse.some((x) => x.datum === b.datum && x.art === b.art && x.betrag === b.betrag)) continue;
+      const { heimspiel, ...daten } = b;
+      const spiel = heimspiel ? alleSpiele.find((x) => x.datum === b.datum && x.heim) : null;
+      const id = neueId();
+      await store.setJSON(`kasse/${id}`, { id, ...daten, spielId: spiel?.id || "", erstellt: new Date().toISOString() });
+    }
+  }
   // Datenstand 4: Mengenhinweise für die Mitbringliste ergänzen, wo noch keine stehen
   if ((e.datenstand || 1) < 4 && Array.isArray(e.cateringArtikel)) {
     neu.cateringArtikel = e.cateringArtikel.map((a) => ({
       ...a, hinweis: a.hinweis ?? (STANDARD_EINSTELLUNGEN.cateringArtikel.find((x) => x.name === a.name)?.hinweis || ""),
     }));
+  }
+  // Datenstand 5: Kaffee nur bei Bedarf (wird pro Spiel zugeschaltet)
+  if ((e.datenstand || 1) < 5) {
+    const liste5 = neu.cateringArtikel || e.cateringArtikel;
+    if (Array.isArray(liste5)) neu.cateringArtikel = liste5.map((a) => (a.name === "Kaffee" && a.immer === undefined ? { ...a, immer: false } : a));
   }
   // Datenstand 3: Standdienst mit 2 festen Plätzen und 1 Reserveplatz
   if ((e.datenstand || 1) < 3) {

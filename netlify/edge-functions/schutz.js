@@ -26,6 +26,7 @@ export const config = {
     "/img/otv-logo-180.png",
     "/favicon.png",
     "/manifest.webmanifest",
+    "/sw.js",
     "/img/icon-180.png",
     "/img/icon-192.png",
     "/img/icon-512.png",
