@@ -73,6 +73,7 @@ const vergangene = (liste) => liste.filter((s) => s.datum < heute());
 const kader = () => [...Z.kader].sort((a, b) => (a.reihenfolge - b.reihenfolge) || a.vorname.localeCompare(b.vorname, "de"));
 const familien = () => kader().map((k) => "Familie von " + k.vorname);
 const istAdmin = () => Z.rolle === "kasse";
+const istTrainer = () => Z.rolle === "trainer" || Z.rolle === "kasse";
 const darfLoeschen = (e) => istAdmin() || e.eigen;
 
 function trikotPlan() {
@@ -110,7 +111,7 @@ function datumBlock(iso) {
 function spielZeile(s) {
   return `<div class="spiel">${datumBlock(s.datum)}<div>
     <div class="spiel-titel">${s.heim ? "OTV gegen " + esc(s.gegner) : esc(s.gegner) + " gegen OTV"}</div>
-    <div class="leise">${s.zeit ? esc(s.zeit) + " Uhr · " : ""}${esc(s.halle || "Halle offen")}
+    <div class="leise">${s.zeit ? esc(s.zeit) + " Uhr · " : ""}${esc(s.halle || "Halle folgt")}
       <span class="${s.heim ? "marke-heim" : "marke-aus"}">${s.heim ? "Heim" : "Auswärts"}</span></div>
     ${s.hinweis ? `<div class="klein">${esc(s.hinweis)}</div>` : ""}
   </div></div>`;
@@ -132,7 +133,7 @@ function abfahrtVorschlag(s) {
 }
 function hallenZeile(s) {
   const t = treffzeit(s);
-  return `<p class="info-zeile">⏰ ${t ? `Die Jungs müssen spätestens um <strong>${t} Uhr</strong> in der Halle sein` : `Die Jungs müssen ${Z.einstellungen.standdienstVorlauf ?? 60} Minuten vor Anwurf in der Halle sein`} (${Z.einstellungen.standdienstVorlauf ?? 60} Minuten vor Anwurf). Abfahrt bitte entsprechend früher planen.</p>`;
+  return `<p class="info-zeile">${t ? `Die Jungs müssen spätestens um <strong>${t} Uhr</strong> in der Halle sein` : `Die Jungs müssen ${Z.einstellungen.standdienstVorlauf ?? 60} Minuten vor Anwurf in der Halle sein`} (${Z.einstellungen.standdienstVorlauf ?? 60} Minuten vor Anwurf). Abfahrt bitte entsprechend früher planen.</p>`;
 }
 const AUSTRAGEN_HINWEIS = "Austragen geht nur auf dem Handy, mit dem du dich eingetragen hast. Sonst kurz in die WhatsApp-Gruppe schreiben.";
 const kopfzeile = (unter, titel) => `<p class="unterzeile">${unter}</p><h1>${titel}</h1>`;
@@ -145,6 +146,7 @@ const SEITEN = {
   catering: seiteCatering,
   fahrten: seiteFahrten,
   termine: seiteTermine,
+  infos: seiteInfos,
   trikots: seiteTrikots,
   kasse: seiteKasse,
   galerie: seiteGalerie,
@@ -234,21 +236,18 @@ function kalenderLaden(termine) {
 const wochentagLang = (s) => datum(s.datum).toLocaleDateString("de-DE", { weekday: "long" });
 const istBald = (s) => (datum(s.datum) - datum(heute())) / 864e5 < 7;
 
-function fehltKasten(s) {
-  const st = cateringStatus(s);
-  const znFehlt = zeitnehmerFehlt(s);
-  const wFehlt = waescheFehlt(s);
-  if (st.komplett && !znFehlt && !wFehlt) return `<div class="fehlt-kasten ok">✓ Alles besetzt, danke!</div>`;
-  const frei = st.plaetze - st.dienst;
-  const wann = istBald(s) ? `Für ${wochentagLang(s)}` : `Für den ${datum(s.datum).toLocaleDateString("de-DE", { day: "numeric", month: "numeric" })}`;
-  return `<div class="fehlt-kasten">
-    <strong>⚠️ ${wann} fehlen noch:</strong>
-    ${frei > 0 ? `<div>👕 ${frei}× Standdienst</div>` : ""}
-    ${st.offen.length ? `<div>🍰 ${st.offen.map((a) => esc(a.name)).join(", ")}</div>` : ""}
-    ${znFehlt ? `<div>⏱ Zeitnehmer</div>` : ""}
-    ${wFehlt ? `<div>🧺 Wäsche mitnehmen</div>` : ""}
-  </div>`;
+// Eine Zeile in der Aufgabenliste: Status-Punkt, Titel, Stand, Details, Knopf
+function aufgabe({ status = "offen", titel, stand = "", detail = "", knopf = "" }) {
+  return `<li class="aufgabe st-${status}"><span class="punkt" aria-hidden="true"></span>
+    <div class="aufgabe-text"><div><strong>${titel}</strong>${stand ? ` <span class="aufgabe-stand">${stand}</span>` : ""}</div>${detail ? `<div class="aufgabe-detail">${detail}</div>` : ""}</div>
+    ${knopf ? `<div class="aufgabe-knopf">${knopf}</div>` : ""}</li>`;
 }
+const wer = (liste) => liste.map((x) => `${esc(x.name.split(" (")[0])}${x.eigen ? " (du)" : ""}`).join(", ");
+const offenZaehler = (html) => (html.match(/st-(offen|dringend)/g) || []).length;
+function statusPill(n) {
+  return n ? `<span class="pill offen">${n} ${n === 1 ? "Aufgabe" : "Aufgaben"} offen</span>` : `<span class="pill ok">✓ Alles besetzt</span>`;
+}
+
 
 function uebernaechstesHinweis(heim, schonGezeigt = []) {
   if (!cateringStatus(heim).komplett) return "";
@@ -263,25 +262,37 @@ function uebernaechstesHinweis(heim, schonGezeigt = []) {
 
 function heimKarte(heim, schonGezeigt) {
   const st = cateringStatus(heim);
-  const ichDienst = Z.standdienst.some((x) => x.spielId === heim.id && x.eigen);
+  const dienst = Z.standdienst.filter((x) => x.spielId === heim.id && !x.reserve);
+  const ichDienst = dienst.some((x) => x.eigen);
   const frei = st.plaetze - st.dienst;
-  const knoepfe = [];
-  if (frei > 0 && !ichDienst) knoepfe.push(`<button class="knopf gross" data-aktion="standdienst-ich" data-spiel="${heim.id}">🙋 Ich übernehme Standdienst</button>`);
-  if (st.offen.length) knoepfe.push(`<button class="knopf zweit gross" data-aktion="mitbringen-liste" data-ziel="mb-${heim.id}" aria-expanded="false">🍰 Ich bringe etwas mit</button>`);
-  const artikelKnoepfe = st.offen.map((a) => `<button class="knopf zweit gross" data-aktion="bringe-schnell" data-spiel="${heim.id}" data-artikel="${esc(a.name)}">${esc(a.name)}${a.hinweis ? `<small>${esc(a.hinweis)}</small>` : ""}</button>`).join("");
-  return `<section class="karte hero">
-    <div class="kachel-label">Heimspiel · Catering</div>
+  const zeilen = [aufgabe({
+    status: frei > 0 ? "offen" : "ok",
+    titel: "Standdienst",
+    stand: `${st.dienst} von ${st.plaetze}`,
+    detail: [dienst.length ? wer(dienst) : "", treffzeit(heim) ? `ab ${treffzeit(heim)} Uhr in der Halle` : ""].filter(Boolean).join(" · "),
+    knopf: frei > 0 && !ichDienst ? `<button class="knopf klein" data-aktion="standdienst-ich" data-spiel="${heim.id}">Ich übernehme</button>` : "",
+  })];
+  for (const a of st.artikel) {
+    const zus = Z.catering.filter((c) => c.spielId === heim.id && c.artikel === a.name);
+    const fehlt = a.zugesagt < a.bedarf;
+    zeilen.push(aufgabe({
+      status: fehlt ? "offen" : "ok",
+      titel: esc(a.name),
+      stand: `${a.zugesagt} von ${a.bedarf}`,
+      detail: [zus.length ? wer(zus) : "", a.vorrat ? (a.stand === "ok" ? "für den Vorrat" : `Vorrat ${a.stand}`) : "", fehlt && a.hinweis ? `je ${esc(a.hinweis)}` : ""].filter(Boolean).join(" · "),
+      knopf: fehlt ? `<button class="knopf klein zweit" data-aktion="bringe-schnell" data-spiel="${heim.id}" data-artikel="${esc(a.name)}">Ich bringe mit</button>` : "",
+    }));
+  }
+  zeilen.push(zeitnehmerZeile(heim), waescheZeile(heim));
+  const liste = zeilen.join("");
+  return `<section class="karte spielkarte">
+    <div class="karte-kopf"><span class="kachel-label">Heimspiel</span>${statusPill(offenZaehler(liste))}</div>
     ${spielZeile(heim)}
-    <div class="hero-status">
-      ${fehltKasten(heim)}
-      ${ichDienst ? `<p class="gut">✓ Du hast hier Standdienst${treffzeit(heim) ? `, bitte spätestens um ${treffzeit(heim)} Uhr da sein` : ""}.</p>` : ""}
+    <ul class="aufgaben">${liste}</ul>
+    <div class="spielkarte-fuss">
+      <a class="link-pfeil" href="#/catering" data-aktion="springen-catering" data-id="${heim.id}">Alle Details zum Catering</a>
+      ${istAdmin() ? `<button class="knopf klein zweit" data-aktion="whatsapp-spiel" data-spiel="${heim.id}">Für WhatsApp kopieren</button>` : ""}
     </div>
-    ${zeitnehmerZeile(heim)}
-    ${waescheZeile(heim)}
-    ${knoepfe.length ? `<div class="hero-aktionen">${knoepfe.join("")}</div>` : ""}
-    ${st.offen.length ? `<div class="mitbringen-auswahl" id="mb-${heim.id}" hidden>
-      <p class="leise klein" style="margin:12px 0 6px">Was bringst du mit? Einmal antippen genügt.</p>
-      <div class="hero-knoepfe">${artikelKnoepfe}</div></div>` : ""}
     ${uebernaechstesHinweis(heim, schonGezeigt)}
   </section>`;
 }
@@ -291,23 +302,38 @@ function auswaertsKarte(s) {
   const ichFahre = st.fahrten.some((f) => f.eigen);
   const kind = meinKind();
   const kindDabei = kind && Z.mitfahrer.some((m) => m.name === kind && st.fahrten.some((f) => f.id === m.fahrtId));
-  const mitPlatz = st.fahrten.filter((f) => Z.mitfahrer.filter((m) => m.fahrtId === f.id).length < f.plaetze);
-  return `<section class="karte hero aus">
-    <div class="kachel-label">Auswärtsspiel · Fahrgemeinschaft</div>
+  const v = Z.einstellungen.standdienstVorlauf ?? 60;
+  const zeilen = [aufgabe({
+    status: "info",
+    titel: "Treffen in der Halle",
+    stand: treffzeit(s) ? `${treffzeit(s)} Uhr` : `${v} Min. vor Anwurf`,
+    detail: `${v} Minuten vor Anwurf. Abfahrt bitte entsprechend früher planen.`,
+  })];
+  if (!st.fahrten.length) {
+    zeilen.push(aufgabe({ status: "offen", titel: "Fahrgemeinschaft", stand: "noch kein Fahrer",
+      knopf: `<a class="knopf klein" href="#/fahrten" data-aktion="fahrt-anbieten" data-id="${s.id}">Ich fahre</a>` }));
+  }
+  for (const f of st.fahrten) {
+    const mit = Z.mitfahrer.filter((m) => m.fahrtId === f.id).map((m) => m.name);
+    const frei = f.plaetze - mit.length;
+    zeilen.push(aufgabe({
+      status: frei > 0 ? "ok" : "info",
+      titel: `Fahrer: ${esc(f.fahrer.split(" (")[0])}${f.eigen ? " (du)" : ""}`,
+      stand: frei > 0 ? `${frei} frei` : "voll",
+      detail: [f.treffpunkt ? esc(f.treffpunkt) : "", mit.length ? "dabei: " + esc(mit.join(", ")) : "noch niemand dabei"].filter(Boolean).join(" · "),
+      knopf: frei > 0 && kind && !kindDabei ? `<button class="knopf klein" data-aktion="mitfahren-schnell" data-fahrt="${f.id}">${esc(kind)} fährt mit</button>` : "",
+    }));
+  }
+  zeilen.push(zeitnehmerZeile(s));
+  const liste = zeilen.join("");
+  return `<section class="karte spielkarte aus">
+    <div class="karte-kopf"><span class="kachel-label">Auswärtsspiel</span>${statusPill(offenZaehler(liste))}</div>
     ${spielZeile(s)}
-    ${hallenZeile(s)}
-    ${zeitnehmerZeile(s)}
-    ${st.fahrten.length ? `<ul class="liste fahrer-liste">${st.fahrten.map((f) => {
-      const mit = Z.mitfahrer.filter((m) => m.fahrtId === f.id).map((m) => m.name);
-      const frei = f.plaetze - mit.length;
-      return `<li><div><strong>🚗 ${esc(f.fahrer.split(" (")[0])}</strong> <span class="pill ${frei > 0 ? "ok" : "neutral"}">${frei > 0 ? `${frei} frei` : "voll"}</span>
-          <div class="leise klein">${f.treffpunkt ? esc(f.treffpunkt) + " · " : ""}${mit.length ? "dabei: " + esc(mit.join(", ")) : "noch niemand dabei"}</div></div>
-        ${frei > 0 && kind && !kindDabei ? `<button class="knopf klein" data-aktion="mitfahren-schnell" data-fahrt="${f.id}">${esc(kind)} fährt mit</button>` : ""}</li>`;
-    }).join("")}</ul>` : `<div class="fehlt-kasten"><strong>⚠️ Noch bietet niemand Plätze an.</strong></div>`}
-    ${kindDabei ? `<p class="gut">✓ ${esc(kind)} fährt mit.</p>` : ""}
-    <div class="hero-aktionen">
-      ${!ichFahre ? `<a class="knopf ${st.fahrten.length ? "zweit " : ""}gross" href="#/fahrten" data-aktion="fahrt-anbieten" data-id="${s.id}">🚗 Ich fahre und habe Plätze frei</a>` : `<p class="gut" style="margin:0">✓ Du fährst.</p>`}
-      ${!kind && mitPlatz.length ? `<a class="knopf zweit gross" href="#/fahrten">Mein Sohn fährt mit</a>` : ""}
+    <ul class="aufgaben">${liste}</ul>
+    ${kindDabei ? `<p class="gut klein" style="margin:10px 0 0">✓ ${esc(kind)} fährt mit.</p>` : ""}
+    <div class="spielkarte-fuss">
+      ${!ichFahre && st.fahrten.length ? `<a class="link-pfeil" href="#/fahrten" data-aktion="fahrt-anbieten" data-id="${s.id}">Ich fahre auch und habe Plätze frei</a>` : `<a class="link-pfeil" href="#/fahrten">Alle Fahrten</a>`}
+      ${istAdmin() ? `<button class="knopf klein zweit" data-aktion="whatsapp-spiel" data-spiel="${s.id}">Für WhatsApp kopieren</button>` : ""}
     </div>
   </section>`;
 }
@@ -324,20 +350,24 @@ function seiteStart() {
   const termine = meineTermine();
   const meine = `<section class="karte">
     <div class="karte-kopf" style="margin-bottom:4px"><h2 style="margin:0">Meine Termine</h2>
-      ${termine.length > 1 ? `<button class="link-knopf" data-aktion="kalender" data-alle="1">📅 Alle in den Kalender</button>` : ""}</div>
+      ${termine.length > 1 ? `<button class="link-knopf" data-aktion="kalender" data-alle="1">Alle in den Kalender</button>` : ""}</div>
     ${termine.length ? `<ul class="liste">${termine.map((t) => `<li>
         <a class="termin" href="${t.link}">${datumBlock(t.spiel.datum)}<span><strong>${esc(t.text)}</strong>
           <span class="leise klein">${t.spiel.zeit ? esc(t.spiel.zeit) + " Uhr · " : ""}${t.spiel.titel ? esc(t.spiel.ort || "") : (t.spiel.heim ? "gegen " : "bei ") + esc(t.spiel.gegner)}</span></span></a>
-        <button class="knopf zweit klein" data-aktion="kalender" data-key="${t.key}" aria-label="In den Kalender">📅 In Kalender</button></li>`).join("")}</ul>`
+        <button class="knopf zweit klein" data-aktion="kalender" data-key="${t.key}" aria-label="In den Kalender">Kalender</button></li>`).join("")}</ul>`
       : `<p class="leer">Du hast dich noch nirgends eingetragen. Oben geht es mit einem Klick.</p>`}
   </section>`;
 
   const offeneTermine = (Z.termine || []).filter((tm) => tm.datum >= heute() && (datum(tm.datum) - datum(heute())) / 864e5 <= 60
     && !(meinKind() && (Z.antworten || []).some((a) => a.terminId === tm.id && a.familie === meinKind())));
-  const terminHinweis = offeneTermine.map((tm) => `<a class="termin-hinweis" href="#/termine">📅 <span><strong>${esc(tm.titel)}</strong> am ${datum(tm.datum).toLocaleDateString("de-DE", { day: "numeric", month: "numeric" })}: bitte zurückmelden</span> ›</a>`).join("");
+  const terminHinweis = offeneTermine.map((tm) => `<a class="termin-hinweis" href="#/termine"><span><strong>${esc(tm.titel)}</strong> am ${datum(tm.datum).toLocaleDateString("de-DE", { day: "numeric", month: "numeric" })}: bitte zurückmelden</span> ›</a>`).join("");
 
+  const abfrageHinweis = offeneAbfragenFuerMich().map((a) => `<a class="termin-hinweis" href="#/infos"><span><strong>${esc(a.titel)}</strong>: bitte für ${esc(meinKind())} antworten${a.frist ? ` (bis ${kurzDatum(a.frist)})` : ""}</span> ›</a>`).join("");
+  const infos = aktiveHinweise().length ? `<section class="karte infos-start"><div class="karte-kopf"><h2 style="margin:0">Vom Trainerteam</h2><a class="klein" href="#/infos">alle ›</a></div>${hinweiseKarte(true)}</section>` : "";
   return `<p class="unterzeile">${meinVorname() ? "Hallo " + esc(meinVorname()) : "Willkommen"}</p><h1>Die nächsten Spiele</h1>
   ${installKarte()}
+  ${infos}
+  ${abfrageHinweis}
   ${terminHinweis}
   ${karten.length ? karten.map((k, i) => `<div class="${i ? "abstand" : ""}">${k}</div>`).join("") : `<section class="karte"><p class="leer">Gerade steht kein Spiel an.</p></section>`}
   ${heimHinweis}
@@ -379,7 +409,7 @@ function seiteSpiele() {
   const e = Z.einstellungen;
   const liste = spieleSortiert();
   const k = kommende(liste), v = vergangene(liste);
-  const zeile = (s) => `<li class="spiel-mit-zn">${spielZeile(s)}${zeitnehmerZeile(s)}${istAdmin() ? `<span class="ausrichten"><button class="knopf klein zweit" data-aktion="spiel-bearbeiten" data-id="${s.id}">Bearbeiten</button><button class="knopf klein gefahr" data-aktion="loeschen" data-col="spiele" data-id="${s.id}" data-frage="Spiel löschen? Standdienst-, Catering- und Trikot-Einträge zu diesem Spiel bleiben erhalten, werden aber nicht mehr angezeigt.">Löschen</button></span>` : ""}</li>`;
+  const zeile = (s) => `<li class="spiel-mit-zn">${spielZeile(s)}${zeitnehmerKurz(s)}${istAdmin() ? `<span class="ausrichten"><button class="knopf klein zweit" data-aktion="spiel-bearbeiten" data-id="${s.id}">Bearbeiten</button><button class="knopf klein gefahr" data-aktion="loeschen" data-col="spiele" data-id="${s.id}" data-frage="Spiel löschen? Standdienst-, Catering- und Trikot-Einträge zu diesem Spiel bleiben erhalten, werden aber nicht mehr angezeigt.">Löschen</button></span>` : ""}</li>`;
   return `${kopfzeile("Was passiert wann und wo?", "Spiele")}
   <div class="raster-2">
     <section class="karte">
@@ -392,7 +422,6 @@ function seiteSpiele() {
     <section class="karte">
       <div class="karte-kopf"><h2 style="margin:0">Unsere Termine</h2></div>
       <p class="leise">Aus diesen Spielen entstehen die Catering-Liste (Heimspiele) und der Trikot-Waschplan (alle Spiele).</p>
-      ${k.some(zeitnehmerFehlt) ? `<p><button class="knopf zweit klein" data-aktion="whatsapp-zeitnehmer">📲 Zeitnehmer gesucht (WhatsApp)</button></p>` : ""}
       ${k.length ? `<ul class="liste">${k.map(zeile).join("")}</ul>` : `<p class="leer">Keine kommenden Spiele eingetragen.</p>`}
       ${v.length ? `<details class="abstand"><summary>Vergangene Spiele (${v.length})</summary><ul class="liste">${v.reverse().map(zeile).join("")}</ul></details>` : ""}
       <div class="nur-kasse abstand">
@@ -447,10 +476,22 @@ function zeitnehmerZeile(s) {
   const zn = zeitnehmerVon(s);
   const fehlt = zn.length < zeitnehmerPlaetze();
   const dringend = fehlt && (datum(s.datum) - datum(heute())) / 864e5 <= 7;
-  return `<div class="zeitnehmer-zeile ${fehlt ? (dringend ? "dringend" : "offen") : "ok"}">
-    <span>⏱ <strong>Zeitnehmer:</strong> ${zn.length ? zn.map((z) => `${esc(z.name)}${darfLoeschen(z) ? ` <button class="link-knopf" data-aktion="loeschen" data-col="zeitnehmer" data-id="${z.id}" data-frage="Als Zeitnehmer austragen?">austragen</button>` : ""}`).join(", ") : "noch offen"}</span>
-    ${fehlt ? `<button class="knopf klein" data-aktion="zeitnehmer-ich" data-spiel="${s.id}">Ich mache das</button>` : ""}
-  </div>`;
+  const eigen = zn.find((z) => darfLoeschen(z) && z.eigen);
+  return aufgabe({
+    status: fehlt ? (dringend ? "dringend" : "offen") : "ok",
+    titel: "Zeitnehmer",
+    stand: fehlt ? (dringend ? "dringend gesucht" : "offen") : "",
+    detail: zn.length ? wer(zn) + (eigen ? ` · <button class="link-knopf" data-aktion="loeschen" data-col="zeitnehmer" data-id="${eigen.id}" data-frage="Als Zeitnehmer austragen?">austragen</button>` : "") : (dringend ? "Ohne Zeitnehmer droht eine Strafe." : ""),
+    knopf: fehlt ? `<button class="knopf klein" data-aktion="zeitnehmer-ich" data-spiel="${s.id}">Ich mache das</button>` : "",
+  });
+}
+// Kurzform für die Spieleliste
+function zeitnehmerKurz(s) {
+  if (!zeitnehmerNoetig(s)) return "";
+  const zn = zeitnehmerVon(s);
+  return zn.length >= zeitnehmerPlaetze()
+    ? `<div class="zn-kurz ok">Zeitnehmer: ${wer(zn)}</div>`
+    : `<div class="zn-kurz offen">Zeitnehmer gesucht · <button class="link-knopf" data-aktion="zeitnehmer-ich" data-spiel="${s.id}">Ich mache das</button></div>`;
 }
 
 // ---------- Wäsche: wer nimmt nach dem Heimspiel Geschirrtücher und Spüllappen mit ----------
@@ -464,11 +505,13 @@ function waescheZeile(s) {
   const w = waescheVon(s);
   const vor = vorherigesHeim(s);
   const bringt = vor && waescheVon(vor);
-  return `<div class="zeitnehmer-zeile ${w ? "ok" : "offen"}">
-    <span>🧺 <strong>Wäsche nach dem Spiel:</strong> ${w ? `${esc(w.name)}${darfLoeschen(w) ? ` <button class="link-knopf" data-aktion="loeschen" data-col="waschdienst" data-id="${w.id}" data-frage="Austragen?">austragen</button>` : ""}` : "noch offen"}
-      <span class="leise klein" style="display:block">${esc(waescheText())} mitnehmen, waschen, zum nächsten Heimspiel mitbringen.${bringt ? ` Bringt diesmal mit: ${esc(bringt.name)}` : ""}</span></span>
-    ${w ? "" : `<button class="knopf klein zweit" data-aktion="waesche-ich" data-spiel="${s.id}">Ich nehme sie mit</button>`}
-  </div>`;
+  return aufgabe({
+    status: w ? "ok" : "offen",
+    titel: "Wäsche nach dem Spiel",
+    stand: w ? "" : "offen",
+    detail: `${w ? wer([w]) + (darfLoeschen(w) && w.eigen ? ` · <button class="link-knopf" data-aktion="loeschen" data-col="waschdienst" data-id="${w.id}" data-frage="Austragen?">austragen</button>` : "") + " · " : ""}${esc(waescheText())} mitnehmen, waschen, zum nächsten Heimspiel mitbringen${bringt ? `. Bringt diesmal mit: ${esc(bringt.name.split(" (")[0])}` : ""}`,
+    knopf: w ? "" : `<button class="knopf klein zweit" data-aktion="waesche-ich" data-spiel="${s.id}">Ich nehme sie mit</button>`,
+  });
 }
 
 function cateringStatus(s) {
@@ -497,7 +540,7 @@ function vorratKarte() {
   const kurz = fehlend.length ? `${fehlend.map((x) => x.a.name).join(", ")} ${fehlend.length === 1 ? "fehlt" : "fehlen"}` : "Vorrat ok";
   const knopf = (a, status, text) => `<button class="seg ${vorratStand(a.name).status === status && (status !== "ok" || !vorratStand(a.name).v || true) ? "an" : ""} ${status}" data-aktion="vorrat-setzen" data-artikel="${esc(a.name)}" data-status="${status}">${text}</button>`;
   return `<details class="karte vorrat-karte">
-    <summary><span>📦 Vorrat</span> <span class="pill ${fehlend.length ? "offen" : "ok"}">${esc(kurz)}</span></summary>
+    <summary><span>Vorrat</span> <span class="pill ${fehlend.length ? "offen" : "ok"}">${esc(kurz)}</span></summary>
     <p class="leise klein">Bitte nach jedem Heimspiel kurz antippen. Was <strong>leer</strong> oder <strong>knapp</strong> ist, steht automatisch auf der Mitbringliste fürs nächste Heimspiel.</p>
     ${va.length ? `<ul class="liste">${staende.map(({ a, st }) => `<li>
       <div><strong>${esc(a.name)}</strong>${st.v && st.status !== "ok" && st.v.von ? `<div class="leise klein">gemeldet von ${esc(st.v.von.split(" (")[0])}</div>` : st.aufgefuellt ? `<div class="leise klein">wurde aufgefüllt</div>` : ""}</div>
@@ -568,10 +611,10 @@ function seiteCatering() {
       : `${pill(st.dienst, st.plaetze, `Standdienst ${st.dienst}/${st.plaetze}`)} ${!st.offen.length ? "" : st.offen.length === st.artikel.length ? `<span class="pill offen">Mitbringliste offen</span>` : `<span class="pill offen">Offen: ${st.offen.map((a) => esc(a.name)).join(", ")}</span>`}`;
     return `<details class="karte spiel-karte" data-spiel="${s.id}" id="spiel-${s.id}" ${offeneSpiele.has(s.id) ? "open" : ""}>
       <summary><div class="summary-innen">${spielZeile(s)}<div class="summary-status">${status}</div></div></summary>
-      <div class="karten-zeitnehmer">${zeitnehmerZeile(s)}${waescheZeile(s)}</div>
+      <ul class="aufgaben karten-zeitnehmer">${zeitnehmerZeile(s)}${waescheZeile(s)}</ul>
       <div class="raster-2 abstand">
         <div><h3>Standdienst</h3>
-          <p class="info-zeile">⏰ ${treffzeit(s) ? `Bitte spätestens um <strong>${treffzeit(s)} Uhr</strong> da sein.` : `Bitte mindestens ${Z.einstellungen.standdienstVorlauf ?? 60} Minuten vor Anpfiff da sein.`} ${esc(Z.einstellungen.standdienstInfo || "")}</p>
+          <p class="info-zeile">${treffzeit(s) ? `Bitte spätestens um <strong>${treffzeit(s)} Uhr</strong> da sein.` : `Bitte mindestens ${Z.einstellungen.standdienstVorlauf ?? 60} Minuten vor Anpfiff da sein.`} ${esc(Z.einstellungen.standdienstInfo || "")}</p>
           <ul class="liste">${plaetze}</ul>
           ${reservePlaetze ? `<h3 class="abstand" style="margin-bottom:2px">Reserve</h3>
           <p class="leise klein" style="margin:0 0 4px">Springt ein, wenn jemand ausfällt.</p>
@@ -580,8 +623,6 @@ function seiteCatering() {
           ${istAdmin() ? Z.einstellungen.cateringArtikel.filter((a) => !gebraucht(s, a)).map((a) => `<p class="nicht-noetig">${esc(a.name)}: diesmal nicht nötig
             <button class="link-knopf" data-aktion="artikel-umschalten" data-spiel="${s.id}" data-artikel="${esc(a.name)}">+ diesmal brauchen</button></p>`).join("") : ""}</div>
       </div>
-      <div class="karte-fuss"><button class="knopf zweit klein" data-aktion="whatsapp-catering" data-spiel="${s.id}">📲 Text für WhatsApp</button>
-        <span class="leise klein">Fertiger Text mit allem, was noch fehlt</span></div>
     </details>`;
   };
 
@@ -916,7 +957,7 @@ function helferUebersicht() {
   const zaehle = (name, feld) => {
     const n = (name || "?").trim();
     const f = familieAusName(n) || zuordnung[n.toLowerCase()];
-    if (f === "-") return;
+    if (f === "-" || f === "Trainer") return;
     if (f && zeilen[f]) zeilen[f][feld]++;
     else ohne[n] = (ohne[n] || 0) + 1;
   };
@@ -943,6 +984,106 @@ function helferUebersicht() {
       <ul class="liste zuordnung-liste">${Object.entries(zuordnung).sort((a, b) => a[0].localeCompare(b[0], "de")).map(([n, f]) => `<li><span>${esc(n.replace(/(^|[\s-])\S/g, (c) => c.toUpperCase()))} → <strong>${f === "-" ? "nicht mitgezählt" : esc(f)}</strong></span>
         <button class="link-knopf" data-aktion="name-zuordnung-loesen" data-name="${esc(n)}">lösen</button></li>`).join("")}</ul></details>` : ""}
   </section>`;
+}
+
+// ---------- Infos vom Trainerteam und Abfragen ----------
+const aktiveHinweise = () => (Z.hinweise || []).filter((h) => !h.bis || h.bis >= heute()).sort((a, b) => (b.erstellt || "").localeCompare(a.erstellt || ""));
+const abfrageOptionen = (a) => (a.optionen || "").split("\n").map((x) => x.trim()).filter(Boolean);
+const abfrageOffen = (a) => !a.geschlossen && (!a.frist || a.frist >= heute());
+const abfrageAntwort = (a, spieler) => (Z.abfrageAntworten || []).find((x) => x.abfrageId === a.id && x.spieler === spieler);
+const offeneAbfragenFuerMich = () => meinKind() ? (Z.abfragen || []).filter((a) => abfrageOffen(a) && !abfrageAntwort(a, meinKind())) : [];
+const kurzDatum = (iso) => datum(iso).toLocaleDateString("de-DE", { day: "numeric", month: "numeric" });
+
+function hinweiseKarte(nurStart = false) {
+  const h = aktiveHinweise();
+  if (!h.length) return nurStart ? "" : `<p class="leer">Gerade gibt es keine Infos vom Trainerteam.</p>`;
+  return `<ul class="hinweis-liste">${(nurStart ? h.slice(0, 3) : h).map((x) => `<li>
+      <div class="hinweis-text">${esc(x.text).replace(/\n/g, "<br>")}</div>
+      <div class="leise klein">${x.von ? esc(x.von) + " · " : ""}${kurzDatum((x.erstellt || heute()).slice(0, 10))}${x.bis ? ` · gilt bis ${kurzDatum(x.bis)}` : ""}
+        ${istTrainer() && !nurStart ? ` · <button class="link-knopf" data-aktion="loeschen" data-col="hinweise" data-id="${x.id}" data-frage="Info löschen?">löschen</button>` : ""}</div>
+    </li>`).join("")}</ul>${nurStart && h.length > 3 ? `<p class="klein"><a href="#/infos">Alle Infos ›</a></p>` : ""}`;
+}
+
+function antwortText(a, x) {
+  if (!x) return "";
+  const opt = abfrageOptionen(a);
+  if (!opt.length) return x.gewaehlt === "ja" ? "Ja" : "Nein";
+  const idx = (x.gewaehlt || "").split(",").filter((i) => i !== "" && i !== "keiner").map(Number);
+  return idx.length ? idx.map((i) => opt[i]).filter(Boolean).join(", ") : "An keinem Termin";
+}
+
+function abfrageKarte(a) {
+  const opt = abfrageOptionen(a);
+  const spieler = kader().map((k) => k.vorname);
+  const antworten = (Z.abfrageAntworten || []).filter((x) => x.abfrageId === a.id);
+  const offen = abfrageOffen(a);
+  const fehlt = spieler.filter((n) => !antworten.some((x) => x.spieler === n));
+  const meine = meinKind() ? abfrageAntwort(a, meinKind()) : null;
+  const gewaehlt = new Set((meine?.gewaehlt || "").split(","));
+  const formular = !offen ? "" : meinKind() ? `<div class="antwort-box">
+      ${meine ? `<p class="gut" style="margin:0 0 8px">✓ Antwort für ${esc(meinKind())}: ${esc(antwortText(a, meine))}</p>` : `<p style="margin:0 0 8px"><strong>Antwort für ${esc(meinKind())}</strong></p>`}
+      <form data-form="abfrage" data-id="${a.id}">
+        ${opt.length ? `<div class="optionen">${opt.map((o, i) => `<label class="option"><input type="checkbox" name="o" value="${i}" ${gewaehlt.has(String(i)) ? "checked" : ""}> <span>${esc(o)}</span></label>`).join("")}</div>`
+          : `<div class="optionen"><label class="option"><input type="radio" name="o" value="ja" ${meine?.gewaehlt === "ja" ? "checked" : ""} required> <span>Ja, ist dabei</span></label><label class="option"><input type="radio" name="o" value="nein" ${meine?.gewaehlt === "nein" ? "checked" : ""}> <span>Nein</span></label></div>`}
+        <input type="text" name="bemerkung" maxlength="200" placeholder="Bemerkung (optional)" value="${esc(meine?.bemerkung || "")}" aria-label="Bemerkung">
+        <div class="ausrichten" style="margin-top:10px"><button class="knopf">${meine ? "Antwort ändern" : "Antwort senden"}</button>
+          ${opt.length ? `<span class="leise klein">Nichts angekreuzt heißt: an keinem Termin.</span>` : ""}</div>
+      </form></div>`
+    : `<p class="hinweis">Bitte zuerst deinen Sohn auswählen, dann kannst du antworten. <button class="link-knopf" data-aktion="name-aendern">Jetzt auswählen</button></p>`;
+  const spalten = opt.length ? opt : ["Dabei"];
+  const zelle = (n, i) => {
+    const x = antworten.find((y) => y.spieler === n);
+    const an = x && (opt.length ? (x.gewaehlt || "").split(",").includes(String(i)) : x.gewaehlt === "ja");
+    const inhalt = !x ? `<span class="leise">–</span>` : an ? "✓" : `<span class="leise">✗</span>`;
+    return istTrainer() && offen ? `<td><button class="zelle ${an ? "an" : ""}" data-aktion="abfrage-zelle" data-id="${a.id}" data-spieler="${esc(n)}" data-index="${opt.length ? i : "ja"}">${inhalt}</button></td>` : `<td>${inhalt}</td>`;
+  };
+  const summe = (i) => antworten.filter((x) => opt.length ? (x.gewaehlt || "").split(",").includes(String(i)) : x.gewaehlt === "ja").length;
+  const uebersicht = `<details class="abstand" ${istTrainer() ? "open" : ""}><summary>Übersicht (${antworten.length} von ${spieler.length} geantwortet)</summary>
+      ${istTrainer() && offen ? `<p class="leise klein">Antworten aus WhatsApp kannst du direkt in der Tabelle antippen.</p>` : ""}
+      <div class="tabelle-wrap"><table class="abfrage-tabelle">
+        <thead><tr><th>Spieler</th>${spalten.map((o) => `<th>${esc(o)}</th>`).join("")}<th>Bemerkung</th></tr></thead>
+        <tbody>${spieler.map((n) => { const x = antworten.find((y) => y.spieler === n); return `<tr><td>${esc(n)}</td>${spalten.map((_, i) => zelle(n, i)).join("")}<td class="klein">${esc(x?.bemerkung || "")}</td></tr>`; }).join("")}</tbody>
+        <tfoot><tr><th>Summe</th>${spalten.map((_, i) => `<th>${summe(i)}</th>`).join("")}<th></th></tr></tfoot>
+      </table></div>
+      ${fehlt.length ? `<p class="klein abstand"><strong>Noch keine Antwort:</strong> ${esc(fehlt.join(", "))}</p>` : `<p class="gut klein abstand">Alle haben geantwortet.</p>`}
+      ${istTrainer() ? `<div class="ausrichten abstand">
+        <button class="knopf zweit klein" data-aktion="abfrage-schliessen" data-id="${a.id}" data-wert="${a.geschlossen ? "nein" : "ja"}">${a.geschlossen ? "Wieder öffnen" : "Abfrage beenden"}</button>
+        <button class="link-knopf gefahr-text" data-aktion="loeschen" data-col="abfragen" data-id="${a.id}" data-frage="Abfrage mit allen Antworten löschen?">löschen</button></div>` : ""}
+    </details>`;
+  return `<section class="karte abfrage-karte">
+    <div class="karte-kopf"><h2 style="margin:0">${esc(a.titel)}</h2>${offen ? (a.frist ? `<span class="pill offen">bis ${kurzDatum(a.frist)}</span>` : "") : `<span class="pill neutral">beendet</span>`}</div>
+    ${a.text ? `<p class="termin-text">${esc(a.text).replace(/\n/g, "<br>")}</p>` : ""}
+    ${a.von ? `<p class="leise klein" style="margin-top:-6px">von ${esc(a.von)}</p>` : ""}
+    ${formular}
+    ${uebersicht}
+  </section>`;
+}
+
+function seiteInfos() {
+  const abfragen = [...(Z.abfragen || [])].sort((a, b) => (b.erstellt || "").localeCompare(a.erstellt || ""));
+  const aktuell = abfragen.filter((a) => abfrageOffen(a) || (a.frist || "9") >= heute());
+  const alt = abfragen.filter((a) => !aktuell.includes(a));
+  const in14 = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
+  return `${kopfzeile("Vom Trainerteam", "Infos und Abfragen")}
+  <section class="karte"><h2>Infos</h2>${hinweiseKarte()}
+    ${istTrainer() ? `<details class="abstand"><summary>Neue Info schreiben</summary>
+      <form data-form="hinweis">
+        <div class="feld"><label>Text</label><textarea name="text" required maxlength="600" placeholder="z. B. Training am Freitag fällt aus, die Halle ist belegt."></textarea></div>
+        <div class="zeile"><div class="feld" style="flex-basis:160px"><label>Anzeigen bis</label><input type="date" name="bis" value="${in14}"></div>
+        <button class="knopf">Veröffentlichen</button></div>
+      </form></details>` : ""}
+  </section>
+  ${aktuell.map((a) => `<div class="abstand">${abfrageKarte(a)}</div>`).join("")}
+  ${istTrainer() ? `<section class="karte abstand"><h2>Neue Abfrage</h2>
+      <p class="leise klein">Zum Beispiel: Wer ist in den Herbstferien beim Training? Die Eltern antworten für ihren Sohn, du siehst sofort die Übersicht.</p>
+      <form data-form="abfrage-neu">
+        <div class="feld"><label>Frage</label><input type="text" name="titel" required maxlength="120" placeholder="Training in den Herbstferien"></div>
+        <div class="feld"><label>Erklärung (optional)</label><textarea name="text" maxlength="800"></textarea></div>
+        <div class="feld"><label>Termine zum Ankreuzen, einer pro Zeile (leer lassen für eine Ja/Nein-Frage)</label><textarea name="optionen" maxlength="600" placeholder="Di 20.10. 17:30\nFr 23.10. 18:00\nDi 27.10. 17:30"></textarea></div>
+        <div class="zeile"><div class="feld" style="flex-basis:160px"><label>Antworten bis</label><input type="date" name="frist"></div>
+        <button class="knopf">Abfrage starten</button></div>
+      </form></section>` : ""}
+  ${alt.length ? `<details class="abstand"><summary>Frühere Abfragen (${alt.length})</summary>${alt.map((a) => `<div class="abstand">${abfrageKarte(a)}</div>`).join("")}</details>` : ""}`;
 }
 
 function seiteDatenschutz() {
@@ -1045,7 +1186,7 @@ function spielErgebnisse() {
         <td class="betrag plus">${euro(b.ein)}</td>
         <td class="betrag minus">${euro(b.aus)}</td>
         <td class="betrag"><strong>${euro(b.ein - b.aus)}</strong></td>
-        <td style="text-align:right"><button class="link-knopf" data-aktion="whatsapp-abrechnung" data-spiel="${s.id}">📲 teilen</button></td>
+        <td style="text-align:right"><button class="link-knopf" data-aktion="whatsapp-abrechnung" data-spiel="${s.id}">teilen</button></td>
       </tr>`).join("")}</tbody></table></div>
   </section>`;
 }
@@ -1146,7 +1287,7 @@ function seiteFahrten() {
       const frei = f.plaetze - mit.length;
       return `<li class="fahrt">
         <div class="fahrt-kopf">
-          <div><strong>🚗 ${esc(f.fahrer)}</strong> <span class="pill ${frei > 0 ? "ok" : "neutral"}">${frei > 0 ? `${frei} von ${f.plaetze} frei` : "voll"}</span>
+          <div><strong>${esc(f.fahrer)}</strong> <span class="pill ${frei > 0 ? "ok" : "neutral"}">${frei > 0 ? `${frei} von ${f.plaetze} frei` : "voll"}</span>
             ${f.treffpunkt ? `<div class="leise klein">Treffpunkt: ${esc(f.treffpunkt)}</div>` : ""}
             ${f.hinweis ? `<div class="leise klein">${esc(f.hinweis)}</div>` : ""}</div>
           ${darfLoeschen(f) ? `<button class="link-knopf" style="color:var(--rot)" data-aktion="loeschen" data-col="fahrten" data-id="${f.id}" data-frage="Fahrt löschen? Eingetragene Mitfahrer werden mit entfernt.">Fahrt löschen</button>` : ""}
@@ -1164,7 +1305,7 @@ function seiteFahrten() {
       <summary><div class="summary-innen">${spielZeile(s)}<div class="summary-status">${status}</div></div></summary>
       <div class="fahrt-inhalt">
         ${hallenZeile(s)}
-        ${zeitnehmerZeile(s)}
+        ${zeitnehmerNoetig(s) ? `<ul class="aufgaben">${zeitnehmerZeile(s)}</ul>` : ""}
         ${fahrten ? `<ul class="liste">${fahrten}</ul>` : `<p class="leer">Noch bietet niemand Plätze an.</p>`}
         <details class="abstand"><summary>Ich fahre und habe Plätze frei</summary>
           <form class="zeile" data-form="fahrt" data-spiel="${s.id}">
@@ -1174,8 +1315,6 @@ function seiteFahrten() {
             <button class="knopf">Fahrt anbieten</button>
           </form></details>
       </div>
-      <div class="karte-fuss"><button class="knopf zweit klein" data-aktion="whatsapp-fahrten" data-spiel="${s.id}">📲 Text für WhatsApp</button>
-        <span class="leise klein">Übersicht der Fahrten für die Gruppe</span></div>
     </details>`;
   };
   return `${kopfzeile("Gemeinsam zu den Auswärtsspielen", "Fahrgemeinschaften")}
@@ -1196,7 +1335,7 @@ const istHandy = () => /iPhone|iPad|iPod|Android/.test(navigator.userAgent);
 function installKarte() {
   if (istApp() || !istHandy() || lokal("otv_install_weg")) return "";
   return `<section class="karte install-karte">
-    <div><strong>📲 Als App aufs Handy</strong><div class="leise klein">Dann ist die Seite mit OTV-Logo auf dem Startbildschirm, ohne App-Store.</div></div>
+    <div><strong>Als App aufs Handy</strong><div class="leise klein">Dann ist die Seite mit OTV-Logo auf dem Startbildschirm, ohne App-Store.</div></div>
     <div class="ausrichten"><button class="knopf klein" data-aktion="app-installieren">So geht’s</button>
       <button class="link-knopf" data-aktion="install-weg">später</button></div>
   </section>`;
@@ -1212,7 +1351,7 @@ async function appInstallieren() {
   const box = document.createElement("div");
   box.className = "lightbox";
   box.innerHTML = `<div class="dialog-box">
-    <h2>📲 Als App installieren</h2>
+    <h2>Als App installieren</h2>
     ${istIOS() ? `<ol class="schritte">
         <li>Diese Seite in <strong>Safari</strong> öffnen (nicht aus WhatsApp heraus).</li>
         <li>Unten auf das <strong>Teilen-Symbol</strong> tippen (Quadrat mit Pfeil nach oben).</li>
@@ -1233,8 +1372,8 @@ async function appInstallieren() {
 function installHinweis() {
   if (matchMedia("(display-mode: standalone)").matches || navigator.standalone) return "";
   const ua = navigator.userAgent;
-  if (/iPhone|iPad|iPod/.test(ua)) return `<p class="tipp">📱 <strong>Tipp:</strong> Unten in Safari auf <strong>Teilen</strong> tippen und <strong>„Zum Home-Bildschirm“</strong> wählen. Dann ist die Seite wie eine App auf dem Handy.</p>`;
-  if (/Android/.test(ua)) return `<p class="tipp">📱 <strong>Tipp:</strong> Oben rechts im Chrome-Menü <strong>⋮</strong> auf <strong>„App installieren“</strong> oder <strong>„Zum Startbildschirm hinzufügen“</strong> tippen.</p>`;
+  if (/iPhone|iPad|iPod/.test(ua)) return `<p class="tipp"><strong>Tipp:</strong> Unten in Safari auf <strong>Teilen</strong> tippen und <strong>„Zum Home-Bildschirm“</strong> wählen. Dann ist die Seite wie eine App auf dem Handy.</p>`;
+  if (/Android/.test(ua)) return `<p class="tipp"><strong>Tipp:</strong> Oben rechts im Chrome-Menü <strong>⋮</strong> auf <strong>„App installieren“</strong> oder <strong>„Zum Startbildschirm hinzufügen“</strong> tippen.</p>`;
   return "";
 }
 
@@ -1245,7 +1384,7 @@ function willkommen({ nurName = false } = {}) {
     box.setAttribute("role", "dialog");
     box.innerHTML = `<form class="dialog-box">
       ${nurName ? `<h2>Wie heißt du?</h2><p class="leise">Damit die anderen sehen, wer sich eingetragen hat.</p>`
-        : `<h2>Willkommen! 👋</h2>
+        : `<h2>Willkommen!</h2>
         <p>Hier organisieren wir Eltern alles rund um die Spiele der C-Jugend: Standdienst, Kuchen, Fahrten, Trikots und Kasse.</p>
         <ul class="punkte-liste">
           <li>Eintragen geht mit einem Klick, austragen genauso.</li>
@@ -1255,7 +1394,7 @@ function willkommen({ nurName = false } = {}) {
       <label for="w-name">Dein Vorname</label>
       <input id="w-name" type="text" maxlength="40" required value="${esc(meinVorname())}" placeholder="z. B. Peggy" autocomplete="given-name">
       <label for="w-kind" class="abstand" style="margin-top:12px">Dein Sohn in der Mannschaft</label>
-      <select id="w-kind"><option value="">bitte wählen …</option>${kader().map((k) => `<option ${k.vorname === meinKind() ? "selected" : ""}>${esc(k.vorname)}</option>`).join("")}</select>
+      <select id="w-kind"><option value="">${Z.rolle === "trainer" ? "kein Sohn, ich bin Trainer" : "bitte wählen …"}</option>${kader().map((k) => `<option ${k.vorname === meinKind() ? "selected" : ""}>${esc(k.vorname)}</option>`).join("")}</select>
       ${nurName ? "" : installHinweis()}
       <div class="ausrichten abstand" style="margin-top:16px">
         <button class="knopf gross">${nurName ? "Weiter" : "Los geht’s"}</button>
@@ -1269,7 +1408,7 @@ function willkommen({ nurName = false } = {}) {
       if (!vorname) return;
       lokal("otv_vorname", vorname);
       lokal("otv_kind", kind);
-      lokal("otv_name", kind ? `${vorname} (${kind})` : vorname);
+      lokal("otv_name", kind ? `${vorname} (${kind})` : Z.rolle === "trainer" ? `${vorname} (Trainer)` : vorname);
       kopfAktualisieren();
       schliessen(gemerkterName());
     });
@@ -1288,7 +1427,7 @@ async function nameSicherstellen() {
 
 function kopfAktualisieren() {
   const v = meinVorname();
-  $("#hallo").textContent = v ? `👤 ${v}` : "Name eintragen";
+  $("#hallo").textContent = v ? v : "Name eintragen";
   $("#hallo").title = "Name ändern";
   const galerieSichtbar = Z && (Z.einstellungen.galerieAktiv || istAdmin());
   document.body.classList.toggle("ohne-galerie", !galerieSichtbar);
@@ -1298,17 +1437,18 @@ function mehrMenue() {
   const box = document.createElement("div");
   box.className = "lightbox sheet-hinter";
   const links = [
-    ["#/termine", "📅", "Termine"], ["#/kasse", "💶", "Mannschaftskasse"], ["#/trikots", "👕", "Trikots waschen"], ["#/mannschaft", "👥", "Mannschaft"],
+    ["#/infos", "📣", "Infos und Abfragen"], ["#/termine", "📅", "Termine"], ["#/kasse", "💶", "Mannschaftskasse"], ["#/trikots", "👕", "Trikots waschen"], ["#/mannschaft", "👥", "Mannschaft"],
     ...(Z.einstellungen.galerieAktiv || istAdmin() ? [["#/galerie", "📷", "Galerie"]] : []),
     ...(istAdmin() ? [["#/verwaltung", "⚙️", "Verwaltung"]] : []),
   ];
   box.innerHTML = `<div class="sheet">
-    ${links.map(([h, i, t]) => `<a href="${h}"><span>${i}</span>${t}</a>`).join("")}
-    <button data-m="name"><span>✏️</span>Name ändern</button>
-    ${istApp() ? "" : `<button data-m="app"><span>📲</span>Als App installieren</button>`}
-    <button data-m="hilfe"><span>❓</span>Hilfe</button>
-    <a href="#/datenschutz"><span>🔒</span>Datenschutz</a>
-    <button data-m="abmelden"><span>🚪</span>Abmelden</button>
+    ${links.map(([h, i, t]) => `<a href="${h}">${t}<span class="pfeil">›</span></a>`).join("")}
+    <hr>
+    <button data-m="name">Name ändern</button>
+    ${istApp() ? "" : `<button data-m="app">Als App installieren</button>`}
+    <button data-m="hilfe">Hilfe</button>
+    <a href="#/datenschutz">Datenschutz</a>
+    <button data-m="abmelden">Abmelden</button>
   </div>`;
   box.addEventListener("click", async (e) => {
     const t = e.target.closest("a,button");
@@ -1386,6 +1526,20 @@ inhalt.addEventListener("submit", async (ev) => {
         offeneSpiele?.add(form.dataset.spiel);
         await api("POST", "/api/c/catering", { ...w, name, spielId: form.dataset.spiel });
         await neuLaden("Danke für die Zusage"); break;
+      }
+      case "hinweis":
+        await api("POST", "/api/c/hinweise", { text: w.text, bis: w.bis, von: meinVorname() || (Z.rolle === "trainer" ? "Trainerteam" : "") });
+        await neuLaden("Info veröffentlicht"); break;
+      case "abfrage-neu":
+        await api("POST", "/api/c/abfragen", { titel: w.titel, text: w.text, optionen: w.optionen, frist: w.frist, von: meinVorname() });
+        await neuLaden("Abfrage gestartet"); break;
+      case "abfrage": {
+        if (!meinKind()) throw new Error("Bitte zuerst deinen Sohn auswählen");
+        const opt = abfrageOptionen(Z.abfragen.find((a) => a.id === form.dataset.id) || {});
+        const werte = [...form.querySelectorAll("input[name=o]:checked")].map((x) => x.value);
+        if (!opt.length && !werte.length) throw new Error("Bitte Ja oder Nein wählen");
+        await api("PUT", `/api/c/abfrageAntworten/${form.dataset.id}-${slug(meinKind())}`, { abfrageId: form.dataset.id, spieler: meinKind(), gewaehlt: opt.length ? (werte.join(",") || "keiner") : werte[0], bemerkung: w.bemerkung || "", von: meinName() });
+        await neuLaden("Danke, Antwort gespeichert"); break;
       }
       case "antwort": {
         if (!meinKind()) throw new Error("Bitte zuerst deinen Sohn auswählen");
@@ -1538,7 +1692,7 @@ inhalt.addEventListener("click", async (ev) => {
       const name = await nameSicherstellen();
       el.disabled = true;
       await api("POST", "/api/c/zeitnehmer", { spielId: el.dataset.spiel, name });
-      await neuLaden("Danke, du bist Zeitnehmer ⏱");
+      await neuLaden("Danke, du bist Zeitnehmer");
     } else if (a === "whatsapp-zeitnehmer") {
       const fehlend = kommende(spieleSortiert()).filter(zeitnehmerFehlt);
       teilen(["⏱ Zeitnehmer gesucht!", Z.einstellungen.zeitnehmerHinweis || "", "",
@@ -1553,7 +1707,7 @@ inhalt.addEventListener("click", async (ev) => {
       el.disabled = true;
       offeneSpiele?.add(el.dataset.spiel);
       await api("POST", "/api/c/waschdienst", { spielId: el.dataset.spiel, name });
-      await neuLaden("Danke fürs Waschen 🧺");
+      await neuLaden("Danke fürs Waschen");
     } else if (a === "antwort-absage") {
       if (!meinKind()) throw new Error("Bitte zuerst deinen Sohn auswählen");
       await api("PUT", `/api/c/antworten/${el.dataset.termin}-${slug(meinKind())}`, { terminId: el.dataset.termin, familie: meinKind(), kommt: false, personen: 0, von: meinName() });
@@ -1571,6 +1725,21 @@ inhalt.addEventListener("click", async (ev) => {
         await api("PUT", "/api/c/antworten/" + id, { bezahlt: false });
         await neuLaden("Als unbezahlt markiert. Die Buchung bitte in der Kasse löschen, falls nötig.");
       }
+    } else if (a === "abfrage-zelle") {
+      const ab = Z.abfragen.find((x) => x.id === el.dataset.id);
+      const alt = abfrageAntwort(ab, el.dataset.spieler);
+      let gewaehlt;
+      if (el.dataset.index === "ja") gewaehlt = alt?.gewaehlt === "ja" ? "nein" : "ja";
+      else {
+        const menge = new Set((alt?.gewaehlt || "").split(",").filter((x) => x !== "" && x !== "keiner"));
+        if (menge.has(el.dataset.index)) menge.delete(el.dataset.index); else menge.add(el.dataset.index);
+        gewaehlt = [...menge].sort((x, y) => x - y).join(",") || "keiner";
+      }
+      await api("PUT", `/api/c/abfrageAntworten/${ab.id}-${slug(el.dataset.spieler)}`, { abfrageId: ab.id, spieler: el.dataset.spieler, gewaehlt, von: alt?.von || `${meinVorname() || "Trainer"} (eingetragen)` });
+      await neuLaden("Gespeichert");
+    } else if (a === "abfrage-schliessen") {
+      await api("PUT", "/api/c/abfragen/" + el.dataset.id, { geschlossen: el.dataset.wert === "ja" });
+      await neuLaden(el.dataset.wert === "ja" ? "Abfrage beendet" : "Abfrage wieder offen");
     } else if (a === "name-zuordnung-loesen") {
       const zuordnung = { ...(Z.einstellungen.namenZuordnung || {}) };
       delete zuordnung[el.dataset.name];
@@ -1612,6 +1781,9 @@ inhalt.addEventListener("click", async (ev) => {
       const f = inhalt.querySelector(`form[data-key="${el.dataset.key}"]`);
       f.hidden = !f.hidden;
       if (!f.hidden) f.querySelector("input[name=menge]").focus();
+    } else if (a === "whatsapp-spiel") {
+      const sp = Z.spiele.find((x) => x.id === el.dataset.spiel);
+      teilen(sp.heim ? cateringText(sp) : fahrtenText(sp));
     } else if (a === "whatsapp-catering") {
       teilen(cateringText(Z.spiele.find((x) => x.id === el.dataset.spiel)));
     } else if (a === "whatsapp-fahrten") {

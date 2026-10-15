@@ -69,6 +69,21 @@ const COLLECTIONS = {
     schreiben: "eltern", eigeneLoeschen: true,
     felder: { spielId: { ...S(40), pflicht: true }, name: { ...S(60), pflicht: true } },
   },
+  hinweise: {
+    // Infos vom Trainerteam, sichtbar bis zum angegebenen Datum
+    schreiben: "trainer",
+    felder: { text: { ...S(600), pflicht: true }, bis: { typ: "datum" }, von: S(60) },
+  },
+  abfragen: {
+    // z. B. "Wer ist in den Herbstferien beim Training?"; optionen = Termine je Zeile, leer = nur ja/nein
+    schreiben: "trainer",
+    felder: { titel: { ...S(120), pflicht: true }, text: S(800), optionen: S(600), frist: { typ: "datum" }, geschlossen: { typ: "bool" }, von: S(60) },
+  },
+  abfrageAntworten: {
+    // Schlüssel = Abfrage + Spieler. gewaehlt = gewählte Optionen (Zeilennummern, kommagetrennt) bzw. "ja"/"nein"
+    schreiben: "eltern", upsert: true,
+    felder: { abfrageId: { ...S(40), pflicht: true }, spieler: { ...S(30), pflicht: true }, gewaehlt: S(200), bemerkung: S(200), von: S(60) },
+  },
   termine: {
     schreiben: "kasse",
     felder: { titel: { ...S(80), pflicht: true }, datum: { typ: "datum", pflicht: true }, zeit: { typ: "zeit" }, ort: S(120),
@@ -210,7 +225,8 @@ const json = (data, status = 200, headers = {}) =>
   });
 const fehler = (text, status = 400) => json({ fehler: text }, status);
 const neueId = () => Date.now().toString(36) + "-" + crypto.randomUUID().slice(0, 8);
-const darf = (rolle, benoetigt) => rolle === "kasse" || (benoetigt === "eltern" && rolle === "eltern");
+// Rollen: eltern < trainer < kasse. Trainer sehen alles wie Eltern und dürfen zusätzlich Hinweise und Abfragen anlegen.
+const darf = (rolle, benoetigt) => rolle === "kasse" || (benoetigt === "eltern" && (rolle === "eltern" || rolle === "trainer")) || (benoetigt === "trainer" && rolle === "trainer");
 
 function pruefe(def, eingabe, teilweise = false) {
   const aus = {};
@@ -365,6 +381,7 @@ export default async (request) => {
     const { passwort } = await request.json().catch(() => ({}));
     let rolle = null;
     if (await passwordMatches(passwort, env("KASSE_PASSWORT"))) rolle = "kasse";
+    else if (env("TRAINER_PASSWORT") && await passwordMatches(passwort, env("TRAINER_PASSWORT"))) rolle = "trainer";
     else if (await passwordMatches(passwort, env("ELTERN_PASSWORT"))) rolle = "eltern";
     if (!rolle) {
       await new Promise((r) => setTimeout(r, 800)); // bremst Durchprobieren
@@ -478,10 +495,13 @@ export default async (request) => {
         const alt = await store.get(`${col}/${id}`, { type: "json" });
         if (!alt) return json({ ok: true });
         const eigen = def.eigeneLoeschen && alt.besitzer && alt.besitzer === besitzer;
-        if (!(rolle === "kasse" || (eigen && darf(rolle, def.schreiben)))) {
+        if (!(rolle === "kasse" || (def.schreiben === "trainer" && rolle === "trainer") || (eigen && darf(rolle, def.schreiben)))) {
           return fehler("Nur eigene Einträge können gelöscht werden", 403);
         }
         await store.delete(`${col}/${id}`);
+        if (col === "abfragen") {
+          for (const x of (await liste(store, "abfrageAntworten")).filter((x) => x.abfrageId === id)) await store.delete(`abfrageAntworten/${x.id}`);
+        }
         if (col === "fahrten") {
           // Mitfahrer dieser Fahrt mit entfernen
           for (const m of (await liste(store, "mitfahrer")).filter((x) => x.fahrtId === id)) await store.delete(`mitfahrer/${m.id}`);

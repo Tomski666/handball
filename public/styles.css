@@ -425,3 +425,109 @@ a.termin-hinweis span { flex: 1; min-width: 0; }
 .menge-stepper { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; }
 .menge-stepper .mini { width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--grau-linie); background: var(--weiss); font-size: 18px; line-height: 1; cursor: pointer; color: var(--blau); }
 .menge-stepper .mini:disabled { opacity: .35; cursor: default; }
+
+/* =====================================================================
+   Version 1.0: ruhigeres Erscheinungsbild
+   Blau = Aktion, Grün = erledigt, Orange = offen (nur als Markierung), Rot = dringend
+   ===================================================================== */
+:root { --grau: #eef1f4; --grau-linie: #dde2e7; --radius: 14px; --schatten: 0 1px 2px rgba(16, 32, 48, .06), 0 6px 20px rgba(16, 32, 48, .05); --orange: #c26a00; }
+body { background: var(--grau); }
+main { padding-top: 24px; }
+.unterzeile { color: var(--blau); font-size: 13px; font-weight: 600; letter-spacing: .08em; }
+h1 { color: var(--text); text-transform: none; font-weight: 700; font-size: clamp(26px, 5vw, 36px); letter-spacing: -.01em; margin: 4px 0 20px; }
+h2 { font-size: 19px; }
+.karte { padding: 20px 20px; }
+.karte + .karte, .abstand { margin-top: 20px; }
+
+/* Knöpfe: zwei Arten, normale Schreibweise */
+.knopf { text-transform: none; letter-spacing: 0; font-size: 15px; border-radius: 10px; min-height: 44px; padding: 9px 18px; }
+.knopf.klein { font-size: 14px; min-height: 36px; padding: 6px 14px; border-width: 1.5px; }
+.knopf.gross { font-size: 16px; min-height: 50px; }
+.link-knopf { font-size: 14px; }
+
+/* Spielkarten auf der Startseite */
+.spielkarte { padding: 18px 20px 16px; }
+.spielkarte .karte-kopf { align-items: center; margin-bottom: 10px; }
+.spielkarte .kachel-label { margin: 0; color: var(--blau); }
+.spielkarte.aus .kachel-label { color: var(--text-leise); }
+.spielkarte .spiel-titel { font-size: 19px; line-height: 1.25; }
+.spielkarte-fuss { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; border-top: 1px solid var(--grau); margin-top: 6px; padding-top: 12px; }
+.link-pfeil { font-weight: 600; font-size: 15px; text-decoration: none; color: var(--blau); }
+.link-pfeil::after { content: " ›"; }
+.danach { font-size: 14px; margin: 10px 0 0; }
+.danach a { color: var(--blau); }
+
+/* Aufgabenliste */
+.aufgaben { list-style: none; margin: 14px 0 0; padding: 0; }
+.aufgabe { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; padding: 12px 0; border-top: 1px solid var(--grau); }
+.aufgabe:first-child { border-top: 0; }
+.aufgabe .punkt { width: 20px; height: 20px; border-radius: 50%; box-sizing: border-box; display: grid; place-items: center; font-size: 12px; font-weight: 800; color: #fff; align-self: start; margin-top: 2px; }
+.st-ok .punkt { background: var(--gruen); }
+.st-ok .punkt::after { content: "✓"; }
+.st-offen .punkt { border: 2.5px solid #e08a00; }
+.st-dringend .punkt { background: var(--rot); }
+.st-dringend .punkt::after { content: "!"; }
+.st-info .punkt { border: 2.5px solid var(--grau-linie); }
+.aufgabe-text { min-width: 0; font-size: 16px; line-height: 1.35; }
+.aufgabe-stand { font-size: 14px; color: var(--text-leise); white-space: nowrap; }
+.st-offen .aufgabe-stand { color: var(--orange); font-weight: 600; }
+.st-dringend .aufgabe-stand { color: var(--rot); font-weight: 700; }
+.aufgabe-detail { font-size: 14px; color: var(--text-leise); margin-top: 2px; overflow-wrap: anywhere; }
+.aufgabe-knopf { justify-self: end; }
+.aufgabe-knopf .knopf, .artikel-zeile .knopf { white-space: nowrap; }
+@media (max-width: 480px) {
+  .aufgabe { gap: 4px 10px; }
+  .aufgabe-text { font-size: 15px; }
+  .aufgabe-knopf .knopf.klein { padding: 6px 10px; font-size: 13.5px; }
+}
+@media (max-width: 340px) {
+  .aufgabe { grid-template-columns: 22px minmax(0, 1fr); }
+  .aufgabe-knopf { grid-column: 2; justify-self: start; margin-top: 4px; }
+}
+.karten-zeitnehmer { padding: 0 20px; margin: 4px 0 0; }
+.karten-zeitnehmer:empty { display: none; }
+.fahrt-inhalt .aufgaben { margin: 0 0 8px; }
+
+/* Spieleliste: Zeitnehmer kurz */
+.zn-kurz { flex-basis: 100%; font-size: 14px; color: var(--text-leise); padding-left: 76px; margin-top: -2px; }
+.zn-kurz.offen { color: var(--orange); font-weight: 600; }
+.zn-kurz .link-knopf { font-weight: 600; }
+@media (max-width: 480px) { .zn-kurz { padding-left: 0; } }
+
+/* Hinweise, Banner */
+.info-zeile { background: #f4f6f8; color: var(--text); }
+a.termin-hinweis { background: var(--weiss); border-left: 4px solid var(--blau); box-shadow: var(--schatten); font-size: 15px; padding: 14px 16px; }
+a.termin-hinweis { justify-content: space-between; }
+.infos-start { border-left: 4px solid var(--blau); margin-bottom: 16px; }
+.hinweis-liste { list-style: none; margin: 0; padding: 0; }
+.hinweis-liste li { padding: 10px 0; border-top: 1px solid var(--grau); }
+.hinweis-liste li:first-child { border-top: 0; padding-top: 0; }
+.hinweis-text { font-size: 16px; line-height: 1.45; overflow-wrap: break-word; }
+.pill { font-size: 12.5px; padding: 3px 10px; }
+
+/* Abfragen */
+.optionen { display: grid; gap: 6px; margin-bottom: 10px; }
+.option { display: flex; align-items: center; gap: 10px; background: var(--weiss); border: 1px solid var(--grau-linie); border-radius: 10px; padding: 10px 12px; font-size: 16px; cursor: pointer; }
+.option input { width: 20px; height: 20px; accent-color: var(--blau); margin: 0; }
+.antwort-box input[type=text] { width: 100%; }
+.abfrage-tabelle { border-collapse: collapse; width: 100%; font-size: 14px; }
+.abfrage-tabelle th, .abfrage-tabelle td { padding: 6px 8px; border-bottom: 1px solid var(--grau); text-align: center; white-space: nowrap; }
+.abfrage-tabelle th:first-child, .abfrage-tabelle td:first-child, .abfrage-tabelle td:last-child { text-align: left; }
+.abfrage-tabelle td:last-child { white-space: normal; min-width: 120px; }
+.abfrage-tabelle tfoot th { border-bottom: 0; }
+.zelle { width: 34px; height: 30px; border: 1px solid var(--grau-linie); border-radius: 6px; background: #fff; cursor: pointer; font-weight: 700; color: var(--gruen); }
+.zelle.an { background: var(--gruen-hell); border-color: var(--gruen); }
+.gefahr-text { color: var(--rot); }
+
+/* Mehr-Menü */
+.sheet a, .sheet button { justify-content: space-between; font-size: 16px; }
+.sheet .pfeil { width: auto; font-size: 20px; color: var(--text-leise); }
+.sheet hr { border: 0; border-top: 1px solid var(--grau); margin: 6px 0; }
+
+/* Desktop: Navigation in eigener Zeile unter dem Kopf, damit alle Punkte Platz haben */
+@media (min-width: 1101px) {
+  .kopf-innen { flex-wrap: wrap; row-gap: 0; padding-bottom: 0; }
+  .kopf-innen .hallo { margin-left: auto; }
+  .nav { order: 3; flex-basis: 100%; margin: 6px 0 0; padding: 4px 0; border-top: 1px solid rgba(255, 255, 255, .18); gap: 4px; }
+  .nav a { font-size: 13px; padding: 8px 10px; }
+}

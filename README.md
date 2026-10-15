@@ -8,6 +8,7 @@ Hosting über GitHub und Netlify (Gratis-Tarif), Daten in Netlify Blobs. Kein Fr
 | Bereich | Wer darf was |
 |---|---|
 | Start | Die zwei nächsten Spiele: Heimspiel mit „Ich übernehme Standdienst“ und „Ich bringe etwas mit“, Auswärtsspiel mit Fahrern, freien Plätzen und „Kind fährt mit“. Darunter „Meine Termine“ mit Kalender-Export. Auf dem Handy ein Hinweis zur App-Installation |
+| Infos und Abfragen | Das Trainerteam schreibt kurze Infos (z. B. Trainingsausfall), die auf der Startseite stehen, bis sie ablaufen. Abfragen wie „Wer ist in den Herbstferien beim Training?“: Eltern kreuzen für ihren Sohn an, Trainer und Kasse sehen die Übersicht und können Antworten aus WhatsApp direkt in der Tabelle antippen |
 | Mannschaft | Text, Liga, Kader (nur Vornamen), Trainer, Trainingszeiten. Ändern nur Kasse |
 | Spiele | handball.net-Widget (Spielplan, Tabelle) und eigene Terminliste. Termine pflegt die Kasse |
 | Heimspiel-Catering | Artikel mit „bei Bedarf“ (z. B. Kaffee) stehen nur auf der Liste, wenn die Kasse sie beim Spiel zuschaltet. Pro Heimspiel Standdienst (Plätze begrenzt) und Mitbringliste. Alle Eltern tragen sich ein und entfernen nur ihre eigenen Einträge. 2 feste Plätze plus Reserve. Knopf „Text für WhatsApp“ |
@@ -20,7 +21,7 @@ Hosting über GitHub und Netlify (Gratis-Tarif), Daten in Netlify Blobs. Kein Fr
 | Galerie | Erst sichtbar, wenn die Kasse sie unter Verwaltung freigibt. Dann laden alle Fotos hoch (werden im Browser verkleinert, Standortdaten entfernt). Melden blendet ein Foto sofort aus, die Kasse gibt frei oder löscht |
 | Verwaltung | Nur Kasse: Kader, Trainer, Anfangsbestand, Mitbringliste, Vorrat, Wäsche, Zeitnehmer, Kategorien, Widget-Token. Dazu die Helfer-Übersicht (wer hat wie oft Standdienst, Mitbringen, Fahren, Zeitnehmer, Trikots übernommen), gezählt über den Sohn in Klammern hinter dem Namen |
 
-Zwei Passwörter: Das **Eltern-Passwort** erlaubt Lesen und Eintragen. Das **Kassen-Passwort** (nur Tomski und Peggy) erlaubt zusätzlich Buchungen und Verwaltung.
+Drei Passwörter: Das **Eltern-Passwort** erlaubt Lesen und Eintragen. Das **Trainer-Passwort** kann alles wie das Eltern-Passwort und zusätzlich Infos und Abfragen anlegen. Das **Kassen-Passwort** (nur Tomski und Peggy) erlaubt zusätzlich Buchungen und Verwaltung.
 
 ## Einrichtung
 
@@ -29,6 +30,7 @@ Zwei Passwörter: Das **Eltern-Passwort** erlaubt Lesen und Eintragen. Das **Kas
 3. Unter *Site configuration → Environment variables* drei Variablen anlegen:
    - `ELTERN_PASSWORT`: Passwort für die Eltern
    - `KASSE_PASSWORT`: Passwort für die Kassenführung, deutlich anders als das Eltern-Passwort
+   - `TRAINER_PASSWORT` (optional): Passwort für das Trainerteam
    - `SESSION_SECRET`: lange Zufallszeichenfolge (mindestens 32 Zeichen), z. B. aus einem Passwortmanager
 4. Neu deployen. Beim ersten Aufruf legt die Seite Startdaten an (Anfangsbestand 850 €, Trainer, Trainingszeiten, Heimspiel am 10.10.2026).
 5. Mit dem Kassen-Passwort anmelden, unter **Verwaltung** den Kader mit Vornamen eintragen und unter **Spiele** die weiteren Termine ergänzen.
