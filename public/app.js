@@ -285,84 +285,93 @@ function uebernaechstesHinweis(heim, schonGezeigt = []) {
   return `<p class="danach"><a href="#/catering" data-aktion="springen-catering" data-id="${naechste.id}">Am ${datum(naechste.datum).toLocaleDateString("de-DE", { day: "numeric", month: "numeric" })} gegen ${esc(naechste.gegner)} fehlen auch noch ${esc(teile.join(", "))} ›</a></p>`;
 }
 
-function heimKarte(heim, schonGezeigt) {
-  const st = cateringStatus(heim);
-  const dienst = Z.standdienst.filter((x) => x.spielId === heim.id && !x.reserve);
+// ---------- Eine Spielkarte für Startseite und Spiele-Seite ----------
+function heimAufgaben(s) {
+  const st = cateringStatus(s);
+  const dienst = Z.standdienst.filter((x) => x.spielId === s.id && !x.reserve);
   const ichDienst = dienst.some((x) => x.eigen);
   const frei = st.plaetze - st.dienst;
-  const zeilen = [aufgabe({
-    status: frei > 0 ? "offen" : "ok",
-    titel: "Standdienst",
+  const z = [{
+    status: frei > 0 ? "offen" : "ok", titel: "Standdienst", kurz: "Standdienst",
     stand: `${st.dienst} von ${st.plaetze}`,
-    detail: [dienst.length ? wer(dienst) : "", treffzeit(heim) ? `ab ${treffzeit(heim)} Uhr in der Halle` : ""].filter(Boolean).join(" · "),
-    knopf: frei > 0 && !ichDienst ? `<button class="knopf klein" data-aktion="standdienst-ich" data-spiel="${heim.id}">Ich übernehme</button>` : "",
-  })];
-  for (const a of st.artikel) {
-    const zus = Z.catering.filter((c) => c.spielId === heim.id && c.artikel === a.name);
-    const fehlt = a.zugesagt < a.bedarf;
-    zeilen.push(aufgabe({
-      status: fehlt ? "offen" : "ok",
-      titel: esc(a.name),
-      stand: `${a.zugesagt} von ${a.bedarf}`,
-      detail: [zus.length ? wer(zus) : "", a.vorrat ? (a.stand === "ok" ? "für den Vorrat" : `Vorrat ${a.stand}`) : "", fehlt && a.hinweis ? `je ${esc(a.hinweis)}` : ""].filter(Boolean).join(" · "),
-      knopf: fehlt ? `<button class="knopf klein zweit" data-aktion="bringe-schnell" data-spiel="${heim.id}" data-artikel="${esc(a.name)}">Ich bringe mit</button>` : "",
-    }));
+    detail: [dienst.length ? wer(dienst) : "", treffzeit(s) ? `ab ${treffzeit(s)} Uhr in der Halle` : ""].filter(Boolean).join(" · "),
+    knopf: frei > 0 && !ichDienst ? `<button class="knopf klein" data-aktion="standdienst-ich" data-spiel="${s.id}">Ich übernehme</button>` : "",
+  }];
+  if (st.artikel.length) {
+    const ok = st.artikel.filter((a) => a.zugesagt >= a.bedarf).length;
+    const offen = st.artikel.filter((a) => a.zugesagt < a.bedarf);
+    z.push({
+      status: offen.length ? "offen" : "ok", titel: "Mitbringen", kurz: "Mitbringen",
+      stand: `${ok} von ${st.artikel.length}`,
+      detail: st.artikel.map((a) => `${esc(a.name)} <span class="${a.zugesagt >= a.bedarf ? "gut-text" : "offen-text"}">${a.zugesagt}/${a.bedarf}</span>`).join(" · "),
+      knopf: offen.length ? `<button class="knopf klein zweit" data-aktion="mitbringen-liste" data-ziel="mb-${s.id}" aria-expanded="false">Ich bringe mit</button>` : "",
+    });
   }
-  zeilen.push(zeitnehmerZeile(heim), waescheZeile(heim));
-  const liste = zeilen.join("");
-  return `<section class="karte spielkarte">
-    <div class="karte-kopf"><span class="kachel-label">Heimspiel</span>${statusPill(offenZaehler(liste))}</div>
-    ${spielZeile(heim)}
-    <ul class="aufgaben">${liste}</ul>
-    <div class="spielkarte-fuss">
-      <a class="link-pfeil" href="#/catering" data-aktion="springen-catering" data-id="${heim.id}">Alle Details zum Catering</a>
-      ${istTrainer() ? `<button class="knopf klein zweit" data-aktion="whatsapp-spiel" data-spiel="${heim.id}">Für WhatsApp kopieren</button>` : ""}
-    </div>
-    ${uebernaechstesHinweis(heim, schonGezeigt)}
-  </section>`;
+  return z;
 }
-
-function auswaertsKarte(s) {
+function auswAufgaben(s) {
   const st = fahrtStatus(s);
-  const ichFahre = st.fahrten.some((f) => f.eigen);
   const kind = meinKind();
   const kindDabei = kind && Z.mitfahrer.some((m) => m.name === kind && st.fahrten.some((f) => f.id === m.fahrtId));
+  const ichFahre = st.fahrten.some((f) => f.eigen);
   const v = Z.einstellungen.standdienstVorlauf ?? 60;
-  const zeilen = [aufgabe({
-    status: "info",
-    titel: "Treffen in der Halle",
+  const z = [{
+    status: "info", titel: "Treffen in der Halle",
     stand: treffzeit(s) ? `${treffzeit(s)} Uhr` : `${v} Min. vor Anwurf`,
-    detail: `${s.halle ? esc(s.halle) + (halleAdresse(s.halle) ? ", " + esc(halleAdresse(s.halle)) : "") + ". " : "Halle folgt. "}${v} Minuten vor Anwurf, Abfahrt entsprechend früher planen.`,
+    detail: `${s.halle ? esc(s.halle) + (halleAdresse(s.halle) && !s.halle.includes(halleAdresse(s.halle)) ? ", " + esc(halleAdresse(s.halle)) : "") : "Halle folgt"}`,
     knopf: routeLink(s.halle),
-  })];
+  }];
   if (!st.fahrten.length) {
-    zeilen.push(aufgabe({ status: "offen", titel: "Fahrgemeinschaft", stand: "noch kein Fahrer",
-      knopf: `<a class="knopf klein" href="#/fahrten" data-aktion="fahrt-anbieten" data-id="${s.id}">Ich fahre</a>` }));
+    z.push({ status: "offen", titel: "Fahrgemeinschaft", kurz: "Fahrer", stand: "noch kein Fahrer",
+      knopf: `<button class="knopf klein" data-aktion="fahrt-anbieten" data-id="${s.id}">Ich fahre</button>` });
   }
   for (const f of st.fahrten) {
     const mit = Z.mitfahrer.filter((m) => m.fahrtId === f.id).map((m) => m.name);
     const frei = f.plaetze - mit.length;
-    zeilen.push(aufgabe({
+    z.push({
       status: frei > 0 ? "ok" : "info",
-      titel: `Fahrer: ${esc(anzeigeName(f.fahrer))}${f.eigen ? " · du" : ""}`,
+      titel: `${esc(anzeigeName(f.fahrer))} fährt${f.eigen ? " · du" : ""}`,
       stand: frei > 0 ? `${frei} frei` : "voll",
       detail: [f.treffpunkt ? "Abfahrt " + esc(abfahrtText(f.treffpunkt)) : "", mit.length ? "dabei: " + esc(mit.join(", ")) : "noch niemand dabei"].filter(Boolean).join(" · "),
       knopf: frei > 0 && kind && !kindDabei ? `<button class="knopf klein" data-aktion="mitfahren-schnell" data-fahrt="${f.id}">${esc(kind)} fährt mit</button>` : "",
-    }));
+    });
   }
-  zeilen.push(zeitnehmerZeile(s));
-  const liste = zeilen.join("");
-  return `<section class="karte spielkarte aus">
-    <div class="karte-kopf"><span class="kachel-label">Auswärtsspiel</span>${statusPill(offenZaehler(liste))}</div>
-    ${spielZeile(s)}
-    <ul class="aufgaben">${liste}</ul>
-    ${kindDabei ? `<p class="gut klein" style="margin:10px 0 0">✓ ${esc(kind)} fährt mit.</p>` : ""}
-    <div class="spielkarte-fuss">
-      ${!ichFahre && st.fahrten.length ? `<a class="link-pfeil" href="#/fahrten" data-aktion="fahrt-anbieten" data-id="${s.id}">Ich fahre auch und habe Plätze frei</a>` : `<a class="link-pfeil" href="#/fahrten">Alle Fahrten</a>`}
-      ${istTrainer() ? `<button class="knopf klein zweit" data-aktion="whatsapp-spiel" data-spiel="${s.id}">Für WhatsApp kopieren</button>` : ""}
-    </div>
-  </section>`;
+  if (st.fahrten.length && !ichFahre) {
+    z.push({ status: "info", titel: "Weitere Fahrer willkommen",
+      knopf: `<button class="knopf klein zweit" data-aktion="fahrt-anbieten" data-id="${s.id}">Ich fahre auch</button>` });
+  }
+  return z;
 }
+function spielKarte(s, { start = false, schonGezeigt = [] } = {}) {
+  const zeilen = [...(s.heim ? heimAufgaben(s) : auswAufgaben(s)), zeitnehmerAufgabe(s), s.heim ? waescheAufgabe(s) : null, trikotAufgabe(s)].filter(Boolean);
+  const offen = zeilen.filter((z) => z.status === "offen" || z.status === "dringend");
+  const status = offen.length
+    ? `<span class="pill ${offen.some((z) => z.status === "dringend") ? "dringend" : "offen"}">${offen.length <= 3 ? "Offen: " + offen.map((z) => z.kurz || z.titel).join(", ") : `${offen.length} Aufgaben offen`}</span>`
+    : `<span class="pill ok">✓ Alles besetzt</span>`;
+  const st = s.heim ? cateringStatus(s) : null;
+  const auswahl = s.heim && st.offen.length ? `<div class="mitbringen-auswahl" id="mb-${s.id}" hidden>
+      <p class="leise klein" style="margin:4px 0 6px">Was bringst du mit? Einmal antippen genügt.</p>
+      <div class="hero-knoepfe">${st.offen.map((a) => `<button class="knopf zweit gross" data-aktion="bringe-schnell" data-spiel="${s.id}" data-artikel="${esc(a.name)}">${esc(a.name)}${a.hinweis ? `<small>je ${esc(a.hinweis)}</small>` : ""}</button>`).join("")}</div></div>` : "";
+  const offenGesetzt = start || (offeneSpiele && offeneSpiele.has(s.id));
+  return `<details class="karte spiel-karte spielkarte ${s.heim ? "" : "aus"}" data-spiel="${s.id}" id="spiel-${s.id}" ${offenGesetzt ? "open" : ""}>
+    <summary>${start ? `<span class="kachel-label">${s.heim ? "Nächstes Heimspiel" : "Nächstes Auswärtsspiel"}</span>` : ""}
+      <div class="summary-innen">${spielZeile(s)}<div class="summary-status">${status}</div></div></summary>
+    <div class="spielkarte-inhalt">
+      <ul class="aufgaben">${zeilen.map(aufgabe).join("")}</ul>
+      ${auswahl}
+      <details class="mehr-details" id="mehr-${s.id}"><summary>${s.heim ? "Standdienst, Reserve und Mitbringliste im Detail" : "Fahrten im Detail: mitfahren, Plätze anbieten"}</summary>
+        <div class="abstand">${s.heim ? cateringDetails(s) : fahrtenDetails(s)}</div></details>
+      ${istTrainer() || istAdmin() ? `<div class="spielkarte-fuss">
+        ${istTrainer() ? `<button class="knopf klein zweit" data-aktion="whatsapp-spiel" data-spiel="${s.id}">Für WhatsApp kopieren</button>` : "<span></span>"}
+        ${istAdmin() ? `<span class="ausrichten"><button class="link-knopf" data-aktion="spiel-bearbeiten" data-id="${s.id}">Spiel bearbeiten</button>
+          <button class="link-knopf gefahr-text" data-aktion="loeschen" data-col="spiele" data-id="${s.id}" data-frage="Spiel löschen? Einträge zu diesem Spiel bleiben erhalten, werden aber nicht mehr angezeigt.">löschen</button></span>` : ""}
+      </div>` : ""}
+      ${start && s.heim ? uebernaechstesHinweis(s, schonGezeigt) : ""}
+    </div>
+  </details>`;
+}
+const heimKarte = (s, schonGezeigt) => spielKarte(s, { start: true, schonGezeigt });
+const auswaertsKarte = (s) => spielKarte(s, { start: true });
 
 function seiteStart() {
   const zwei = kommende(spieleSortiert()).slice(0, 2);
@@ -462,42 +471,42 @@ function kalenderAboKarte() {
   </details>`;
 }
 
+let spieleFilter = "alle";
 function seiteSpiele() {
   const e = Z.einstellungen;
-  const liste = spieleSortiert();
+  const alle = spieleSortiert();
+  const f = spieleFilter;
+  const liste = alle.filter((s) => f === "alle" || (f === "heim" ? s.heim : !s.heim));
   const k = kommende(liste), v = vergangene(liste);
-  const zeile = (s) => `<li class="spiel-mit-zn">${spielZeile(s)}${zeitnehmerKurz(s)}${istAdmin() ? `<span class="ausrichten"><button class="knopf klein zweit" data-aktion="spiel-bearbeiten" data-id="${s.id}">Bearbeiten</button><button class="knopf klein gefahr" data-aktion="loeschen" data-col="spiele" data-id="${s.id}" data-frage="Spiel löschen? Standdienst-, Catering- und Trikot-Einträge zu diesem Spiel bleiben erhalten, werden aber nicht mehr angezeigt.">Löschen</button></span>` : ""}</li>`;
-  return `${kopfzeile("Was passiert wann und wo?", "Spiele")}
+  if (offeneSpiele === null) offeneSpiele = new Set(k.length ? [k[0].id] : []);
+  const knopf = (wert, text) => `<button class="seg ${f === wert ? "an ok" : ""}" data-aktion="spiele-filter" data-wert="${wert}">${text}</button>`;
+  return `${kopfzeile("Standdienst, Mitbringen, Fahrten, Zeitnehmer", "Spiele")}
+  <div class="spiele-kopf">
+    <div class="segment filter">${knopf("alle", "Alle")}${knopf("heim", "Heimspiele")}${knopf("aus", "Auswärts")}</div>
+  </div>
+  <p class="leise klein">Spiel antippen, um alle Aufgaben zu sehen. ${AUSTRAGEN_HINWEIS}</p>
+  ${k.length ? k.map((s) => spielKarte(s)).join("") : `<section class="karte"><p class="leer">Keine kommenden Spiele${f === "heim" ? " (Heim)" : f === "aus" ? " (Auswärts)" : ""} eingetragen.</p></section>`}
+  ${v.length ? `<details class="abstand"><summary>Vergangene Spiele (${v.length})</summary><div class="abstand">${[...v].reverse().map((s) => spielKarte(s)).join("")}</div></details>` : ""}
+  <h2 class="bereich-titel">Rund um die Spiele</h2>
+  ${f !== "aus" ? vorratKarte() : ""}
   ${kalenderAboKarte()}
-  <div class="raster-2">
-    <section class="karte">
-      <h2>Spielplan und Tabelle</h2>
-      ${e.widgetToken
-        ? `<div id="handball-spielplan"></div><div id="handball-tabelle" class="abstand"></div>`
-        : `<p>Spielplan, Ergebnisse und Tabelle kommen direkt von handball.net.</p>`}
-      <a class="knopf zweit" href="${esc(e.handballNetUrl)}" target="_blank" rel="noopener">Auf handball.net öffnen</a>
-    </section>
-    <section class="karte">
-      <div class="karte-kopf"><h2 style="margin:0">Unsere Termine</h2></div>
-      <p class="leise">Aus diesen Spielen entstehen die Catering-Liste (Heimspiele) und der Trikot-Waschplan (alle Spiele).</p>
-      ${k.length ? `<ul class="liste">${k.map(zeile).join("")}</ul>` : `<p class="leer">Keine kommenden Spiele eingetragen.</p>`}
-      ${v.length ? `<details class="abstand"><summary>Vergangene Spiele (${v.length})</summary><ul class="liste">${v.reverse().map(zeile).join("")}</ul></details>` : ""}
-      <div class="nur-kasse abstand">
-        <h3 id="spiel-titel">Spiel hinzufügen</h3>
-        <form class="zeile" data-form="spiel">
-          <input type="hidden" name="id">
-          <div class="feld"><label>Datum</label><input type="date" name="datum" required></div>
-          <div class="feld" style="flex-basis:110px"><label>Anwurf</label><input type="time" name="zeit"></div>
-          <div class="feld"><label>Gegner</label><input type="text" name="gegner" required maxlength="80"></div>
-          <div class="feld"><label>Halle</label><input type="text" name="halle" maxlength="80" list="hallen-liste"><datalist id="hallen-liste">${(Z.einstellungen.hallen || []).map((h) => `<option value="${esc(h.name)}">`).join("")}</datalist></div>
-          <div class="feld" style="flex-basis:130px"><label>Art</label><select name="heim"><option value="true">Heimspiel</option><option value="false">Auswärts</option></select></div>
-          <div class="feld" style="flex-basis:100%"><label>Hinweis (optional)</label><input type="text" name="hinweis" maxlength="300" placeholder="z. B. Treffpunkt 13:45 Uhr"></div>
-          <button class="knopf">Speichern</button>
-          <button class="knopf zweit" type="reset" data-aktion="spiel-abbrechen">Leeren</button>
-        </form>
-      </div>
-    </section>
-  </div>`;
+  <details class="karte formular-klappe"><summary>Spielplan und Tabelle (handball.net)</summary>
+    <div class="abstand">${e.widgetToken ? `<div id="handball-spielplan"></div><div id="handball-tabelle" class="abstand"></div>` : `<p>Spielplan, Ergebnisse und Tabelle kommen direkt von handball.net.</p>`}
+    <a class="knopf zweit" href="${esc(e.handballNetUrl)}" target="_blank" rel="noopener">Auf handball.net öffnen</a></div>
+  </details>
+  <details class="karte formular-klappe nur-kasse" id="spiel-formular"><summary id="spiel-titel">Spiel hinzufügen</summary>
+    <form class="zeile abstand" data-form="spiel">
+      <input type="hidden" name="id">
+      <div class="feld"><label>Datum</label><input type="date" name="datum" required></div>
+      <div class="feld" style="flex-basis:110px"><label>Anwurf</label><input type="time" name="zeit"></div>
+      <div class="feld"><label>Gegner</label><input type="text" name="gegner" required maxlength="80"></div>
+      <div class="feld"><label>Halle</label><input type="text" name="halle" maxlength="80" list="hallen-liste"><datalist id="hallen-liste">${(e.hallen || []).map((h) => `<option value="${esc(h.name)}">`).join("")}</datalist></div>
+      <div class="feld" style="flex-basis:130px"><label>Art</label><select name="heim"><option value="true">Heimspiel</option><option value="false">Auswärts</option></select></div>
+      <div class="feld" style="flex-basis:100%"><label>Hinweis (optional)</label><input type="text" name="hinweis" maxlength="300" placeholder="z. B. Treffpunkt 13:45 Uhr"></div>
+      <button class="knopf">Speichern</button>
+      <button class="knopf zweit" type="reset" data-aktion="spiel-abbrechen">Leeren</button>
+    </form>
+  </details>`;
 }
 
 let offeneSpiele = null; // welche Heimspiel-Karten aufgeklappt sind
@@ -529,20 +538,21 @@ const zeitnehmerPlaetze = () => Z.einstellungen.zeitnehmerPlaetze ?? 1;
 const zeitnehmerNoetig = (s) => zeitnehmerPlaetze() > 0 && (Z.einstellungen.zeitnehmerBei !== "heim" || s.heim);
 const zeitnehmerVon = (s) => (Z.zeitnehmer || []).filter((x) => x.spielId === s.id);
 const zeitnehmerFehlt = (s) => zeitnehmerNoetig(s) && zeitnehmerVon(s).length < zeitnehmerPlaetze();
-function zeitnehmerZeile(s) {
-  if (!zeitnehmerNoetig(s)) return "";
+function zeitnehmerAufgabe(s) {
+  if (!zeitnehmerNoetig(s)) return null;
   const zn = zeitnehmerVon(s);
   const fehlt = zn.length < zeitnehmerPlaetze();
   const dringend = fehlt && (datum(s.datum) - datum(heute())) / 864e5 <= 7;
   const eigen = zn.find((z) => darfLoeschen(z) && z.eigen);
-  return aufgabe({
+  return {
     status: fehlt ? (dringend ? "dringend" : "offen") : "ok",
-    titel: "Zeitnehmer",
+    titel: "Zeitnehmer", kurz: "Zeitnehmer",
     stand: fehlt ? (dringend ? "dringend gesucht" : "offen") : "",
     detail: zn.length ? wer(zn) + (eigen ? ` · <button class="link-knopf" data-aktion="loeschen" data-col="zeitnehmer" data-id="${eigen.id}" data-frage="Als Zeitnehmer austragen?">austragen</button>` : "") : (dringend ? "Ohne Zeitnehmer droht eine Strafe." : ""),
     knopf: fehlt ? `<button class="knopf klein" data-aktion="zeitnehmer-ich" data-spiel="${s.id}">Ich mache das</button>` : "",
-  });
+  };
 }
+const zeitnehmerZeile = (s) => { const a = zeitnehmerAufgabe(s); return a ? aufgabe(a) : ""; };
 // Kurzform für die Spieleliste
 function zeitnehmerKurz(s) {
   if (!zeitnehmerNoetig(s)) return "";
@@ -558,18 +568,32 @@ const waescheNoetig = (s) => s.heim && (Z.einstellungen.waescheArtikel || []).le
 const waescheVon = (s) => (Z.waschdienst || []).find((x) => x.spielId === s.id);
 const waescheFehlt = (s) => waescheNoetig(s) && !waescheVon(s);
 const vorherigesHeim = (s) => heimspiele().filter((x) => x.datum < s.datum).sort((a, b) => b.datum.localeCompare(a.datum))[0];
-function waescheZeile(s) {
-  if (!waescheNoetig(s)) return "";
+function waescheAufgabe(s) {
+  if (!waescheNoetig(s)) return null;
   const w = waescheVon(s);
   const vor = vorherigesHeim(s);
   const bringt = vor && waescheVon(vor);
-  return aufgabe({
+  return {
     status: w ? "ok" : "offen",
-    titel: "Wäsche nach dem Spiel",
+    titel: "Wäsche nach dem Spiel", kurz: "Wäsche",
     stand: w ? "" : "offen",
-    detail: `${w ? wer([w]) + (darfLoeschen(w) && w.eigen ? ` · <button class="link-knopf" data-aktion="loeschen" data-col="waschdienst" data-id="${w.id}" data-frage="Austragen?">austragen</button>` : "") + " · " : ""}${esc(waescheText())} mitnehmen, waschen, zum nächsten Heimspiel mitbringen${bringt ? `. Bringt diesmal mit: ${esc(bringt.name.split(" (")[0])}` : ""}`,
+    detail: `${w ? wer([w]) + (darfLoeschen(w) && w.eigen ? ` · <button class="link-knopf" data-aktion="loeschen" data-col="waschdienst" data-id="${w.id}" data-frage="Austragen?">austragen</button>` : "") + " · " : ""}${esc(waescheText())}: mitnehmen, waschen, nächstes Heimspiel wieder mitbringen${bringt ? `. Bringt diesmal mit: ${esc(anzeigeName(bringt.name))}` : ""}`,
     knopf: w ? "" : `<button class="knopf klein zweit" data-aktion="waesche-ich" data-spiel="${s.id}">Ich nehme sie mit</button>`,
-  });
+  };
+}
+const waescheZeile = (s) => { const a = waescheAufgabe(s); return a ? aufgabe(a) : ""; };
+function trikotAufgabe(s) {
+  const p = trikotPlan().find((x) => x.spiel.id === s.id);
+  if (!p) return null;
+  const wer = p.familie.replace(/^Familie von /, "");
+  const ihr = meinKind() && wer === meinKind();
+  return {
+    status: p.erledigt ? "ok" : "info",
+    titel: "Trikots waschen",
+    stand: esc(wer) + (ihr ? ` <span class="pill offen">das seid ihr</span>` : ""),
+    detail: p.erledigt ? "erledigt, danke!" : "Satz nach dem Spiel mitnehmen, gewaschen zum nächsten Spiel",
+    knopf: `<a class="link-knopf" href="#/trikots">${ihr ? "tauschen" : "Plan"}</a>`,
+  };
 }
 
 function cateringStatus(s) {
@@ -606,28 +630,8 @@ function vorratKarte() {
   </details>`;
 }
 
-function seiteCatering() {
+function cateringDetails(s) {
   const e = Z.einstellungen;
-  const liste = heimspiele();
-  const k = kommende(liste), v = vergangene(liste);
-  if (offeneSpiele === null) offeneSpiele = new Set(k.length ? [k[0].id] : []);
-
-  const uebersicht = k.length ? `<section class="karte">
-    <h2>Übersicht: Wo wird noch Hilfe gebraucht?</h2>
-    <div class="tabelle-wrap"><table class="uebersicht">
-      <thead><tr><th>Heimspiel</th><th><span class="lang">Standdienst</span><span class="kurz">Dienst</span></th>${e.cateringArtikel.map((a) => `<th class="nur-breit">${esc(a.name)}</th>`).join("")}<th class="nur-schmal">Mitbringen</th></tr></thead>
-      <tbody>${k.map((s) => {
-        const st = cateringStatus(s);
-        return `<tr data-aktion="springen" data-id="${s.id}" title="Zum Spiel springen">
-          <td><strong>${datum(s.datum).toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit" })}</strong><div class="leise klein">${esc(s.gegner)}</div></td>
-          <td>${pill(st.dienst, st.plaetze)}</td>
-          ${e.cateringArtikel.map((g) => { const a = st.artikel.find((x) => x.name === g.name); return `<td class="nur-breit">${a ? pill(a.zugesagt, a.bedarf) : `<span class="leise">–</span>`}</td>`; }).join("")}
-          <td class="nur-schmal">${pill(st.artikel.length - st.offen.length, st.artikel.length, st.offen.length ? `${st.offen.length} offen` : "komplett")}</td></tr>`;
-      }).join("")}</tbody></table></div>
-    <p class="leise klein" style="margin:8px 0 0">Zeile antippen, um direkt zum Spiel zu springen.</p>
-  </section>` : "";
-
-  const karte = (s) => {
     const st = cateringStatus(s);
     const alle = Z.standdienst.filter((x) => x.spielId === s.id).sort((a, b) => a.erstellt.localeCompare(b.erstellt));
     const dienst = alle.filter((x) => !x.reserve);
@@ -667,10 +671,7 @@ function seiteCatering() {
     const status = st.komplett
       ? `<span class="pill ok">✓ Alles besetzt</span>`
       : `${pill(st.dienst, st.plaetze, `Standdienst ${st.dienst}/${st.plaetze}`)} ${!st.offen.length ? "" : st.offen.length === st.artikel.length ? `<span class="pill offen">Mitbringliste offen</span>` : `<span class="pill offen">Offen: ${st.offen.map((a) => esc(a.name)).join(", ")}</span>`}`;
-    return `<details class="karte spiel-karte" data-spiel="${s.id}" id="spiel-${s.id}" ${offeneSpiele.has(s.id) ? "open" : ""}>
-      <summary><div class="summary-innen">${spielZeile(s)}<div class="summary-status">${status}</div></div></summary>
-      <ul class="aufgaben karten-zeitnehmer">${zeitnehmerZeile(s)}${waescheZeile(s)}</ul>
-      <div class="raster-2 abstand">
+    return `<div class="raster-2 abstand">
         <div><h3>Standdienst</h3>
           <p class="info-zeile">${treffzeit(s) ? `Bitte spätestens um <strong>${treffzeit(s)} Uhr</strong> da sein.` : `Bitte mindestens ${Z.einstellungen.standdienstVorlauf ?? 60} Minuten vor Anpfiff da sein.`} ${esc(Z.einstellungen.standdienstInfo || "")}</p>
           <ul class="liste">${plaetze}</ul>
@@ -680,17 +681,11 @@ function seiteCatering() {
         <div><h3>Mitbringliste</h3><ul class="liste">${artikel}</ul>
           ${istAdmin() ? Z.einstellungen.cateringArtikel.filter((a) => !gebraucht(s, a)).map((a) => `<p class="nicht-noetig">${esc(a.name)}: diesmal nicht nötig
             <button class="link-knopf" data-aktion="artikel-umschalten" data-spiel="${s.id}" data-artikel="${esc(a.name)}">+ diesmal brauchen</button></p>`).join("") : ""}</div>
-      </div>
-    </details>`;
-  };
-
-  return `${kopfzeile("Standdienst und Mitbringliste", "Heimspiel-Catering")}
-  <div class="hinweis info">${AUSTRAGEN_HINWEIS}</div>
-  ${vorratKarte()}
-  ${uebersicht}
-  <div class="abstand">${k.length ? k.map(karte).join("") : `<section class="karte"><p class="leer">Kein kommendes Heimspiel eingetragen.</p></section>`}</div>
-  ${v.length ? `<details class="abstand"><summary>Vergangene Heimspiele (${v.length})</summary><div class="abstand">${[...v].reverse().map(karte).join("")}</div></details>` : ""}`;
+      </div>`;
 }
+
+// Alte Adressen #/catering und #/fahrten zeigen die Spiele-Seite mit passendem Filter
+function seiteCatering() { spieleFilter = "heim"; return seiteSpiele(); }
 
 function seiteTrikots() {
   const plan = trikotPlan();
@@ -1342,7 +1337,6 @@ function abrechnungsText(spielId) {
 }
 
 // ---------- Fahrgemeinschaften ----------
-let offeneFahrten = null;
 const auswaertsspiele = () => spieleSortiert().filter((s) => !s.heim);
 
 function fahrtStatus(s) {
@@ -1447,11 +1441,7 @@ function fahrtenText(s) {
   return z.join("\n");
 }
 
-function seiteFahrten() {
-  const liste = auswaertsspiele();
-  const k = kommende(liste), v = vergangene(liste);
-  if (offeneFahrten === null) offeneFahrten = new Set(k.length ? [k[0].id] : []);
-  const karte = (s) => {
+function fahrtenDetails(s) {
     const st = fahrtStatus(s);
     const vergeben = new Set(Z.mitfahrer.filter((m) => st.fahrten.some((f) => f.id === m.fahrtId)).map((m) => m.name));
     const kinder = kader().map((x) => x.vorname).filter((n) => !vergeben.has(n));
@@ -1471,32 +1461,16 @@ function seiteFahrten() {
           <button class="knopf klein">Mitfahren</button></form>` : ""}
       </li>`;
     }).join("");
-    const status = st.fahrten.length
-      ? `<span class="pill neutral">${st.fahrten.length} Fahrer</span> <span class="pill ${st.frei > 0 ? "ok" : "offen"}">${st.frei > 0 ? `${st.frei} ${st.frei === 1 ? "Platz" : "Plätze"} frei` : "alle Plätze belegt"}</span>`
-      : `<span class="pill offen">Noch keine Fahrt</span>`;
-    return `<details class="karte spiel-karte" data-gruppe="fahrten" data-spiel="${s.id}" id="fahrt-${s.id}" ${offeneFahrten.has(s.id) ? "open" : ""}>
-      <summary><div class="summary-innen">${spielZeile(s)}<div class="summary-status">${status}</div></div></summary>
-      <div class="fahrt-inhalt">
-        ${hallenZeile(s)}
-        ${halleAdresse(s.halle) ? `<p class="halle-adresse">${esc(s.halle)}, ${esc(halleAdresse(s.halle))} ${routeLink(s.halle, "link-knopf")}</p>` : ""}
-        ${zeitnehmerNoetig(s) ? `<ul class="aufgaben">${zeitnehmerZeile(s)}</ul>` : ""}
-        ${fahrten ? `<ul class="liste">${fahrten}</ul>` : `<p class="leer">Noch bietet niemand Plätze an.</p>`}
-        <details class="abstand"><summary>Ich fahre und habe Plätze frei</summary>
+  return `${fahrten ? `<ul class="liste">${fahrten}</ul>` : `<p class="leer">Noch bietet niemand Plätze an.</p>`}
+        <details class="abstand fahrt-anbieten" id="anbieten-${s.id}"><summary>Ich fahre und habe Plätze frei</summary>
           <form class="zeile" data-form="fahrt" data-spiel="${s.id}">
             <div class="feld" style="flex-basis:110px"><label>Freie Plätze</label><select name="plaetze">${[1, 2, 3, 4, 5, 6].map((n) => `<option ${n === 3 ? "selected" : ""}>${n}</option>`).join("")}</select></div>
             <div class="feld" style="flex-basis:240px"><label>Abfahrt: Uhrzeit und Treffpunkt</label><input type="text" name="treffpunkt" maxlength="120" placeholder="${treffzeit(s) ? `z. B. Abfahrt ${abfahrtVorschlag(s)} Uhr am OTV-Parkplatz` : "z. B. Abfahrt am OTV-Parkplatz"}"></div>
             <div class="feld" style="flex-basis:200px"><label>Hinweis</label><input type="text" name="hinweis" maxlength="160" placeholder="optional, z. B. nur Hinfahrt"></div>
             <button class="knopf">Fahrt anbieten</button>
-          </form></details>
-      </div>
-    </details>`;
-  };
-  return `${kopfzeile("Gemeinsam zu den Auswärtsspielen", "Fahrgemeinschaften")}
-  <div class="hinweis info">Wer fährt, bietet Plätze an. Wer mitfahren möchte, trägt seinen Sohn bei einer Fahrt ein. ${AUSTRAGEN_HINWEIS}</div>
-  ${k.length ? k.map(karte).join("") : `<section class="karte"><p class="leer">Kein kommendes Auswärtsspiel eingetragen.</p></section>`}
-  ${v.length ? `<details class="abstand"><summary>Vergangene Auswärtsspiele (${v.length})</summary><div class="abstand">${[...v].reverse().map(karte).join("")}</div></details>` : ""}`;
+          </form></details>`;
 }
-
+function seiteFahrten() { spieleFilter = "aus"; return seiteSpiele(); }
 
 // ---------- Als App installieren ----------
 let installEreignis = null;
@@ -1613,7 +1587,7 @@ function mehrMenue() {
   const box = document.createElement("div");
   box.className = "lightbox sheet-hinter";
   const links = [
-    ["#/infos", "📣", "Infos & Termine"], ["#/kasse", "💶", "Mannschaftskasse"], ["#/trikots", "👕", "Trikots waschen"], ["#/mannschaft", "👥", "Mannschaft"],
+    ["#/trikots", "", "Trikots waschen"], ["#/mannschaft", "", "Mannschaft und Training"],
     ...(Z.einstellungen.galerieAktiv || istAdmin() ? [["#/galerie", "📷", "Galerie"]] : []),
     ...(istAdmin() ? [["#/verwaltung", "⚙️", "Verwaltung"]] : []),
   ];
@@ -1643,8 +1617,9 @@ function zeigen() {
   const pfad = location.hash.replace(/^#\/?/, "").split("?")[0];
   const seite = SEITEN[pfad] || seiteStart;
   inhalt.innerHTML = seite();
-  document.querySelectorAll(".nav a, .unten-nav a").forEach((a) => a.classList.toggle("aktiv", a.getAttribute("href") === "#/" + pfad));
-  $("#unten-mehr").classList.toggle("aktiv", !["", "catering", "fahrten", "spiele"].includes(pfad));
+  const nav = { catering: "spiele", fahrten: "spiele", termine: "infos" }[pfad] ?? pfad;
+  document.querySelectorAll(".nav a, .unten-nav a").forEach((a) => a.classList.toggle("aktiv", a.getAttribute("href") === "#/" + nav));
+  $("#unten-mehr").classList.toggle("aktiv", !["", "spiele", "infos", "kasse"].includes(nav));
   kopfAktualisieren();
   if (pfad === "spiele" && Z.einstellungen.widgetToken) widgetsLaden();
 }
@@ -1744,7 +1719,7 @@ inhalt.addEventListener("submit", async (ev) => {
       }
       case "fahrt": {
         const name = await nameSicherstellen();
-        offeneFahrten?.add(form.dataset.spiel);
+        offeneSpiele?.add(form.dataset.spiel);
         await api("POST", "/api/c/fahrten", { ...w, fahrer: name, plaetze: Number(w.plaetze), spielId: form.dataset.spiel });
         await neuLaden("Danke, deine Fahrt ist eingetragen"); break;
       }
@@ -1873,6 +1848,7 @@ inhalt.addEventListener("click", async (ev) => {
       for (const k of ["id", "datum", "zeit", "gegner", "halle", "hinweis"]) f.elements[k].value = sp[k] || "";
       f.elements.heim.value = sp.heim ? "true" : "false";
       $("#spiel-titel").textContent = `Spiel ändern: ${sp.gegner}`;
+      $("#spiel-formular").open = true;
       f.scrollIntoView({ behavior: "smooth", block: "center" });
     } else if (a === "spiel-abbrechen") {
       setTimeout(() => { $("#spiel-titel").textContent = "Spiel hinzufügen"; inhalt.querySelector('form[data-form="spiel"]').elements.id.value = ""; });
@@ -1940,13 +1916,14 @@ inhalt.addEventListener("click", async (ev) => {
       await api("POST", "/api/c/mitfahrer", { fahrtId: el.dataset.fahrt, name: meinKind(), eingetragenVon: meinName() });
       await neuLaden(`${meinKind()} fährt mit`);
     } else if (a === "fahrt-anbieten") {
-      if (offeneFahrten === null) offeneFahrten = new Set();
-      offeneFahrten.add(el.dataset.id);
-      setTimeout(() => {
-        const karte = document.getElementById("fahrt-" + el.dataset.id);
-        const d = karte?.querySelector("details:not(.spiel-karte)");
-        if (d) { d.open = true; d.scrollIntoView({ behavior: "smooth", block: "center" }); }
-      }, 200);
+      ev.preventDefault();
+      if (offeneSpiele === null) offeneSpiele = new Set();
+      offeneSpiele.add(el.dataset.id);
+      for (const id of ["spiel-", "mehr-", "anbieten-"]) { const d = document.getElementById(id + el.dataset.id); if (d) d.open = true; }
+      document.getElementById("anbieten-" + el.dataset.id)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    } else if (a === "spiele-filter") {
+      spieleFilter = el.dataset.wert;
+      if (location.hash !== "#/spiele") location.hash = "#/spiele"; else zeigen();
     } else if (a === "app-installieren") {
       await appInstallieren();
     } else if (a === "install-weg") {
@@ -2022,7 +1999,7 @@ inhalt.addEventListener("click", async (ev) => {
 inhalt.addEventListener("toggle", (ev) => {
   const d = ev.target;
   if (!d.classList?.contains("spiel-karte")) return;
-  const menge = d.dataset.gruppe === "fahrten" ? offeneFahrten : offeneSpiele;
+  const menge = offeneSpiele;
   if (!menge) return;
   if (d.open) menge.add(d.dataset.spiel); else menge.delete(d.dataset.spiel);
 }, true);
@@ -2191,7 +2168,13 @@ $("#abmelden").addEventListener("click", async () => {
   await fetch("/api/logout", { method: "POST" });
   location.href = "/login.html";
 });
-window.addEventListener("hashchange", () => { zeigen(); window.scrollTo(0, 0); });
+let letzterPfad = "";
+window.addEventListener("hashchange", () => {
+  const pfad = location.hash.replace(/^#\/?/, "").split("?")[0];
+  if (pfad === "spiele" && !["spiele", "catering", "fahrten"].includes(letzterPfad)) spieleFilter = "alle";
+  letzterPfad = pfad;
+  zeigen(); window.scrollTo(0, 0);
+});
 
 // Aktuelle Daten holen, wenn die Seite wieder in den Vordergrund kommt (z. B. App vom Startbildschirm)
 let zuletztGeladen = Date.now();

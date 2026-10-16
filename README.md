@@ -68,6 +68,10 @@ netlify.toml            Konfiguration, noindex und Sicherheits-Header
 
 iPhone: Seite in Safari öffnen, Teilen, „Zum Home-Bildschirm“. Android: Chrome-Menü, „Zum Startbildschirm hinzufügen“ bzw. „App installieren“.
 
+## Aufbau (ab Version 1.4)
+
+Startseite = alles zum nächsten Heim- und Auswärtsspiel. Seite **Spiele** = alle Spiele mit derselben Karte (Standdienst, Mitbringen, Fahrten, Zeitnehmer, Wäsche, Trikots), Filter Alle/Heim/Auswärts, darunter Vorrat, Kalender-Abo und handball.net. Die früheren Seiten Catering und Fahrten leiten auf die Spiele-Seite mit Filter um. Navigation unten: Start, Spiele, Infos, Kasse, Mehr.
+
 ## Bedienung für Eltern
 
 Beim ersten Besuch fragt die Seite einmal nach Vorname und Kind und zeigt einen Tipp, wie man sie als App ablegt. Auf dem Handy liegt die Navigation unten (Start, Catering, Fahrten, Spiele, Mehr). Unter „Mehr“ liegen Kasse, Trikots, Mannschaft und Galerie. Name und Kind lassen sich über den Namen oben rechts oder „Mehr“ ändern.

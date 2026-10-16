@@ -557,3 +557,20 @@ details.bearbeiten textarea { min-height: 80px; }
 .training-halle .link-knopf { font-weight: 600; }
 .kalender-abo { margin-bottom: 20px; }
 .sohn-fehlt { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; border-left: 4px solid #e08a00; }
+
+/* Version 1.4: eine Spielkarte für alles */
+details.spielkarte { padding: 0; }
+details.spielkarte + details.spielkarte, .abstand > details.spielkarte + details.spielkarte { margin-top: 12px; }
+details.spielkarte > summary .kachel-label { display: block; margin-bottom: 8px; color: var(--blau); }
+details.spielkarte.aus > summary .kachel-label { color: var(--text-leise); }
+.spielkarte-inhalt { padding: 0 20px 16px; }
+.spielkarte-inhalt > .aufgaben { margin-top: 6px; }
+details.mehr-details { margin-top: 6px; border-top: 1px solid var(--grau); padding-top: 10px; }
+details.mehr-details > summary { font-size: 14px; font-weight: 600; }
+.pill.dringend { background: var(--rot-hell); color: var(--rot); }
+.gut-text { color: var(--gruen); font-weight: 600; }
+.offen-text { color: var(--orange); font-weight: 600; }
+.spiele-kopf { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.segment.filter .seg { padding: 8px 16px; font-size: 15px; }
+.segment.filter .seg.an { background: var(--blau); color: #fff; }
+#mehr-menue-dummy {}
