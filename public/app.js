@@ -346,7 +346,7 @@ function auswaertsKarte(s) {
       status: frei > 0 ? "ok" : "info",
       titel: `Fahrer: ${esc(anzeigeName(f.fahrer))}${f.eigen ? " · du" : ""}`,
       stand: frei > 0 ? `${frei} frei` : "voll",
-      detail: [f.treffpunkt ? esc(f.treffpunkt) : "", mit.length ? "dabei: " + esc(mit.join(", ")) : "noch niemand dabei"].filter(Boolean).join(" · "),
+      detail: [f.treffpunkt ? "Abfahrt " + esc(abfahrtText(f.treffpunkt)) : "", mit.length ? "dabei: " + esc(mit.join(", ")) : "noch niemand dabei"].filter(Boolean).join(" · "),
       knopf: frei > 0 && kind && !kindDabei ? `<button class="knopf klein" data-aktion="mitfahren-schnell" data-fahrt="${f.id}">${esc(kind)} fährt mit</button>` : "",
     }));
   }
@@ -1363,23 +1363,71 @@ function fahrtKachel() {
     <a class="knopf" href="#/fahrten">Mitfahren oder Plätze anbieten</a></section>`;
 }
 
+// "10:30" -> "10:30 Uhr" (nur wenn "Uhr" noch fehlt)
+const mitUhr = (t) => String(t || "").replace(/\b(\d{1,2})[:.](\d{2})\b(?!\s*Uhr)/gi, "$1:$2 Uhr");
+const abfahrtText = (t) => mitUhr(String(t || "").trim().replace(/^abfahrt:?\s*/i, ""));
+
 function spielNachricht(sp) {
-  const basis = (sp.heim ? cateringText(sp) : fahrtenText(sp)).split("\n").filter((z) => !/^Eintragen: /.test(z));
-  while (basis.length && basis[basis.length - 1] === "") basis.pop();
-  const oben = [];
+  const z = [];
+  // 1. Infos vom Trainerteam
   const infos = aktiveHinweise();
   if (infos.length) {
-    oben.push("📣 *WICHTIG VOM TRAINERTEAM*");
-    for (const h of infos) for (const zeile of h.text.split("\n").filter(Boolean)) oben.push(`*${zeile.trim()}*`);
-    oben.push("", "──────────", "");
+    z.push("📣 *Info vom Trainerteam*");
+    for (const h of infos) z.push(h.text.trim());
+    z.push("");
   }
-  const unten = [];
+  // 2. Kopf: Spiel, Tag, Anwurf, Treffen, Halle
+  const tag = datum(sp.datum).toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" });
+  const tz = treffzeit(sp);
+  const adr = halleAdresse(sp.halle);
+  const halle = [sp.halle, adr && !(sp.halle || "").includes(adr) ? adr : ""].filter(Boolean).join(", ");
+  z.push(sp.heim ? `🏠 *Heimspiel gegen ${sp.gegner}*` : `🚗 *Auswärtsspiel bei ${sp.gegner}*`);
+  z.push(`${tag}${sp.zeit ? ` · Anwurf ${sp.zeit} Uhr` : ""}`);
+  if (tz) z.push(`Jungs${sp.heim ? " und Standdienst" : ""} um ${tz} Uhr in der Halle`);
+  z.push(`Halle: ${halle || "folgt"}`);
+  // 3. Was fehlt, was steht
+  const fehlt = [], steht = [];
+  if (sp.heim) {
+    const st = cateringStatus(sp);
+    const dienst = Z.standdienst.filter((x) => x.spielId === sp.id && !x.reserve);
+    const frei = st.plaetze - st.dienst;
+    if (frei > 0) fehlt.push(`${frei}× Standdienst`);
+    if (dienst.length) steht.push(`Standdienst: ${dienst.map((x) => anzeigeName(x.name)).join(", ")}`);
+    const offen = st.artikel.filter((a) => a.zugesagt < a.bedarf);
+    if (offen.length) fehlt.push(offen.map((a) => `${a.name}${a.bedarf - a.zugesagt > 1 ? ` (${a.bedarf - a.zugesagt}×)` : ""}`).join(", "));
+    for (const a of st.artikel) {
+      const zus = Z.catering.filter((c) => c.spielId === sp.id && c.artikel === a.name);
+      if (zus.length) steht.push(`${a.name}: ${zus.map((c) => anzeigeName(c.name)).join(", ")}`);
+    }
+  } else {
+    const st = fahrtStatus(sp);
+    if (!st.fahrten.length) fehlt.push("Fahrer mit freien Plätzen");
+    for (const f of st.fahrten) {
+      const mit = Z.mitfahrer.filter((m) => m.fahrtId === f.id).map((m) => m.name);
+      const frei = f.plaetze - mit.length;
+      steht.push(`${anzeigeName(f.fahrer)} fährt: ${frei > 0 ? `${frei} ${frei === 1 ? "Platz" : "Plätze"} frei` : "voll"}${f.treffpunkt ? `, Abfahrt ${abfahrtText(f.treffpunkt)}` : ""}${mit.length ? `, dabei: ${mit.join(", ")}` : ""}`);
+    }
+  }
+  if (zeitnehmerNoetig(sp)) {
+    const zn = zeitnehmerVon(sp);
+    if (zn.length < zeitnehmerPlaetze()) fehlt.push("Zeitnehmer");
+    if (zn.length) steht.push(`Zeitnehmer: ${zn.map((x) => anzeigeName(x.name)).join(", ")}`);
+  }
+  if (waescheNoetig(sp)) {
+    const w = waescheVon(sp);
+    if (w) steht.push(`Wäsche danach: ${anzeigeName(w.name)}`); else fehlt.push("Wäsche nach dem Spiel mitnehmen");
+  }
+  if (fehlt.length) { z.push("", "❗ *Noch gesucht*"); for (const x of fehlt) z.push(`• ${x}`); }
+  if (steht.length) { z.push("", "✅ *Schon eingetragen*"); for (const x of steht) z.push(`• ${x}`); }
+  if (!fehlt.length) z.push("", "Alles besetzt, danke! 👍");
+  // 4. Offene Rückmeldungen
   const rm = offeneRueckmeldungen();
   if (rm.length) {
-    unten.push("", "📅 *Bitte zurückmelden:*");
-    for (const x of rm) unten.push(`• ${x.titel}${x.datum ? ` (${kurzDatum(x.datum)})` : ""}${x.frist && x.frist >= heute() ? `, *bis ${wochentagKurz(x.frist)} ${kurzDatum(x.frist)}*` : ""}: noch ${x.offen} ${x.offen === 1 ? "Familie" : "Familien"} offen`);
+    z.push("", "📅 *Bitte zurückmelden*");
+    for (const x of rm) z.push(`• ${x.titel}${x.datum ? ` am ${kurzDatum(x.datum)}` : ""}${x.frist && x.frist >= heute() ? `, bis ${kurzDatum(x.frist)}` : ""} (${x.offen} ${x.offen === 1 ? "Familie fehlt" : "Familien fehlen"} noch)`);
   }
-  return [...oben, ...basis, ...unten, "", `Eintragen und zurückmelden: ${location.origin}`].join("\n");
+  z.push("", `👉 ${location.origin}`);
+  return z.join("\n");
 }
 
 function fahrtenText(s) {
@@ -1413,7 +1461,7 @@ function seiteFahrten() {
       return `<li class="fahrt">
         <div class="fahrt-kopf">
           <div><strong>${esc(anzeigeName(f.fahrer))}</strong> <span class="pill ${frei > 0 ? "ok" : "neutral"}">${frei > 0 ? `${frei} von ${f.plaetze} frei` : "voll"}</span>
-            ${f.treffpunkt ? `<div class="leise klein">Treffpunkt: ${esc(f.treffpunkt)}</div>` : ""}
+            ${f.treffpunkt ? `<div class="leise klein">Abfahrt: ${esc(abfahrtText(f.treffpunkt))}</div>` : ""}
             ${f.hinweis ? `<div class="leise klein">${esc(f.hinweis)}</div>` : ""}</div>
           ${darfLoeschen(f) ? `<button class="link-knopf" style="color:var(--rot)" data-aktion="loeschen" data-col="fahrten" data-id="${f.id}" data-frage="Fahrt löschen? Eingetragene Mitfahrer werden mit entfernt.">Fahrt löschen</button>` : ""}
         </div>
@@ -1436,7 +1484,7 @@ function seiteFahrten() {
         <details class="abstand"><summary>Ich fahre und habe Plätze frei</summary>
           <form class="zeile" data-form="fahrt" data-spiel="${s.id}">
             <div class="feld" style="flex-basis:110px"><label>Freie Plätze</label><select name="plaetze">${[1, 2, 3, 4, 5, 6].map((n) => `<option ${n === 3 ? "selected" : ""}>${n}</option>`).join("")}</select></div>
-            <div class="feld" style="flex-basis:240px"><label>Treffpunkt und Uhrzeit</label><input type="text" name="treffpunkt" maxlength="120" placeholder="${treffzeit(s) ? `z. B. Abfahrt ${abfahrtVorschlag(s)} Uhr am OTV-Parkplatz` : "z. B. Abfahrt am OTV-Parkplatz"}"></div>
+            <div class="feld" style="flex-basis:240px"><label>Abfahrt: Uhrzeit und Treffpunkt</label><input type="text" name="treffpunkt" maxlength="120" placeholder="${treffzeit(s) ? `z. B. Abfahrt ${abfahrtVorschlag(s)} Uhr am OTV-Parkplatz` : "z. B. Abfahrt am OTV-Parkplatz"}"></div>
             <div class="feld" style="flex-basis:200px"><label>Hinweis</label><input type="text" name="hinweis" maxlength="160" placeholder="optional, z. B. nur Hinfahrt"></div>
             <button class="knopf">Fahrt anbieten</button>
           </form></details>
