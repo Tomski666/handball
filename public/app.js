@@ -188,7 +188,7 @@ function meineTermine() {
   for (const m of Z.mitfahrer.filter((x) => x.eigen)) {
     const f = Z.fahrten.find((x) => x.id === m.fahrtId);
     const sp = f && spiel(f.spielId);
-    if (kommt(sp)) t.push({ key: "m" + m.id, spiel: sp, text: `${m.name} fährt mit bei ${f.fahrer.split(" (")[0]}${f.treffpunkt ? " · " + f.treffpunkt : ""}`, standdienst: true, link: "#/fahrten" });
+    if (kommt(sp)) t.push({ key: "m" + m.id, spiel: sp, text: `${m.name} fährt mit bei ${anzeigeName(f.fahrer)}${f.treffpunkt ? " · " + f.treffpunkt : ""}`, standdienst: true, link: "#/fahrten" });
   }
   for (const w of (Z.waschdienst || []).filter((x) => x.eigen)) {
     const sp = spiel(w.spielId);
@@ -260,9 +260,9 @@ function aufgabe({ status = "offen", titel, stand = "", detail = "", knopf = "" 
 // Name mit Sohn anzeigen. Fehlt der Sohn im Eintrag, hilft die Zuordnung aus der Verwaltung.
 function anzeigeName(name) {
   const n = (name || "").trim();
-  if (/\([^()]+\)\s*$/.test(n)) return n;
   const f = (Z.einstellungen.namenZuordnung || {})[n.toLowerCase()];
-  return f && f !== "-" && f !== "Trainer" ? `${n} (${f})` : n;
+  const basis = n.replace(/\s*\([^()]+\)\s*$/, "");
+  return f && f !== "-" && f !== "Trainer" ? `${basis} (${f})` : n;
 }
 const wer = (liste) => liste.map((x) => `${esc(anzeigeName(x.name))}${x.eigen ? " · du" : ""}`).join(", ");
 const offenZaehler = (html) => (html.match(/st-(offen|dringend)/g) || []).length;
@@ -341,7 +341,7 @@ function auswaertsKarte(s) {
     const frei = f.plaetze - mit.length;
     zeilen.push(aufgabe({
       status: frei > 0 ? "ok" : "info",
-      titel: `Fahrer: ${esc(f.fahrer.split(" (")[0])}${f.eigen ? " (du)" : ""}`,
+      titel: `Fahrer: ${esc(anzeigeName(f.fahrer))}${f.eigen ? " · du" : ""}`,
       stand: frei > 0 ? `${frei} frei` : "voll",
       detail: [f.treffpunkt ? esc(f.treffpunkt) : "", mit.length ? "dabei: " + esc(mit.join(", ")) : "noch niemand dabei"].filter(Boolean).join(" · "),
       knopf: frei > 0 && kind && !kindDabei ? `<button class="knopf klein" data-aktion="mitfahren-schnell" data-fahrt="${f.id}">${esc(kind)} fährt mit</button>` : "",
@@ -1022,7 +1022,7 @@ function helferUebersicht() {
   const zuordnung = Z.einstellungen.namenZuordnung || {};
   const zaehle = (name, feld) => {
     const n = (name || "?").trim();
-    const f = familieAusName(n) || zuordnung[n.toLowerCase()];
+    const f = zuordnung[n.toLowerCase()] || familieAusName(n);
     if (f === "-" || f === "Trainer") return;
     if (f && zeilen[f]) zeilen[f][feld]++;
     else ohne[n] = (ohne[n] || 0) + 1;
@@ -1047,8 +1047,16 @@ function helferUebersicht() {
       <ul class="liste zuordnung-liste">${Object.entries(ohne).sort((a, b) => a[0].localeCompare(b[0], "de")).map(([n, c]) => `<li><span><strong>${esc(n)}</strong> <span class="leise">(${c}×)</span></span>
         <select data-aktion="name-zuordnen" data-name="${esc(n)}"><option value="">Sohn wählen …</option>${namen.map((k) => `<option value="${esc(k)}">${esc(k)}</option>`).join("")}<option value="-">nicht mitzählen (z. B. Trainer)</option></select></li>`).join("")}</ul>` : ""}
     ${Object.keys(zuordnung).length ? `<details class="abstand"><summary>Zugeordnete Namen (${Object.keys(zuordnung).length})</summary>
-      <ul class="liste zuordnung-liste">${Object.entries(zuordnung).sort((a, b) => a[0].localeCompare(b[0], "de")).map(([n, f]) => `<li><span>${esc(n.replace(/(^|[\s-])\S/g, (c) => c.toUpperCase()))} → <strong>${f === "-" ? "nicht mitgezählt" : esc(f)}</strong></span>
-        <button class="link-knopf" data-aktion="name-zuordnung-loesen" data-name="${esc(n)}">lösen</button></li>`).join("")}</ul></details>` : ""}
+      <ul class="liste zuordnung-liste">${Object.entries(zuordnung).sort((a, b) => a[0].localeCompare(b[0], "de")).map(([n, f]) => `<li><span>${esc(n.replace(/(^|[\s(-])\S/g, (c) => c.toUpperCase()))}</span>
+        <select data-aktion="name-zuordnen" data-name="${esc(n)}">${namen.map((k) => `<option value="${esc(k)}" ${k === f ? "selected" : ""}>${esc(k)}</option>`).join("")}<option value="-" ${f === "-" ? "selected" : ""}>nicht mitzählen</option><option value="__loesen">Zuordnung lösen</option></select></li>`).join("")}</ul></details>` : ""}
+    <details class="abstand"><summary>Einen Namen von Hand zuordnen</summary>
+      <p class="leise klein">Für Einträge mit falschem oder fehlendem Sohn, z. B. „René“ oder „Anja (Max)“ statt „Anja (Mats)“. Gilt für alle Einträge mit genau diesem Namen.</p>
+      <form class="zeile" data-form="name-zuordnen">
+        <div class="feld" style="flex-basis:220px"><label>Name wie eingetragen</label><input type="text" name="name" required maxlength="80" list="alle-namen">
+          <datalist id="alle-namen">${[...new Set([...Z.standdienst, ...Z.catering, ...(Z.zeitnehmer || []), ...(Z.waschdienst || [])].map((x) => x.name).concat(Z.fahrten.map((x) => x.fahrer)).filter(Boolean))].sort((a, b) => a.localeCompare(b, "de")).map((x) => `<option value="${esc(x)}">`).join("")}</datalist></div>
+        <div class="feld" style="flex-basis:160px"><label>Sohn</label><select name="sohn">${namen.map((k) => `<option>${esc(k)}</option>`).join("")}<option value="-">nicht mitzählen</option></select></div>
+        <button class="knopf">Zuordnen</button>
+      </form></details>
   </section>`;
 }
 
@@ -1401,7 +1409,7 @@ function seiteFahrten() {
       const frei = f.plaetze - mit.length;
       return `<li class="fahrt">
         <div class="fahrt-kopf">
-          <div><strong>${esc(f.fahrer)}</strong> <span class="pill ${frei > 0 ? "ok" : "neutral"}">${frei > 0 ? `${frei} von ${f.plaetze} frei` : "voll"}</span>
+          <div><strong>${esc(anzeigeName(f.fahrer))}</strong> <span class="pill ${frei > 0 ? "ok" : "neutral"}">${frei > 0 ? `${frei} von ${f.plaetze} frei` : "voll"}</span>
             ${f.treffpunkt ? `<div class="leise klein">Treffpunkt: ${esc(f.treffpunkt)}</div>` : ""}
             ${f.hinweis ? `<div class="leise klein">${esc(f.hinweis)}</div>` : ""}</div>
           ${darfLoeschen(f) ? `<button class="link-knopf" style="color:var(--rot)" data-aktion="loeschen" data-col="fahrten" data-id="${f.id}" data-frage="Fahrt löschen? Eingetragene Mitfahrer werden mit entfernt.">Fahrt löschen</button>` : ""}
@@ -1645,6 +1653,11 @@ inhalt.addEventListener("submit", async (ev) => {
       case "hinweis":
         await api("POST", "/api/c/hinweise", { text: w.text, bis: w.bis, von: meinVorname() || (Z.rolle === "trainer" ? "Trainerteam" : "") });
         await neuLaden("Info veröffentlicht"); break;
+      case "name-zuordnen": {
+        const zuordnung = { ...(Z.einstellungen.namenZuordnung || {}), [w.name.trim().toLowerCase()]: w.sohn };
+        await api("PUT", "/api/einstellungen", { namenZuordnung: zuordnung });
+        await neuLaden(w.sohn === "-" ? `${w.name} wird nicht mitgezählt` : `${w.name} gehört zu ${w.sohn}`); break;
+      }
       case "hinweis-edit":
         await api("PUT", "/api/c/hinweise/" + form.dataset.id, { text: w.text, bis: w.bis || "" });
         await neuLaden("Info geändert"); break;
@@ -1978,6 +1991,13 @@ inhalt.addEventListener("change", async (ev) => {
     }
     if (el.dataset.aktion === "name-zuordnen") {
       if (!el.value) return;
+      if (el.value === "__loesen") {
+        const z = { ...(Z.einstellungen.namenZuordnung || {}) };
+        delete z[el.dataset.name.trim().toLowerCase()];
+        await api("PUT", "/api/einstellungen", { namenZuordnung: z });
+        await neuLaden("Zuordnung gelöst");
+        return;
+      }
       const zuordnung = { ...(Z.einstellungen.namenZuordnung || {}), [el.dataset.name.trim().toLowerCase()]: el.value };
       await api("PUT", "/api/einstellungen", { namenZuordnung: zuordnung });
       await neuLaden(el.value === "-" ? `${el.dataset.name} wird nicht mitgezählt` : `${el.dataset.name} gehört zu ${el.value}`);
