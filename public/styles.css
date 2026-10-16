@@ -556,3 +556,4 @@ details.bearbeiten textarea { min-height: 80px; }
 .training-halle { text-align: right; }
 .training-halle .link-knopf { font-weight: 600; }
 .kalender-abo { margin-bottom: 20px; }
+.sohn-fehlt { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; border-left: 4px solid #e08a00; }

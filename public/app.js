@@ -379,6 +379,9 @@ function seiteStart() {
   const infos = aktiveHinweise().length ? `<section class="karte infos-start"><div class="karte-kopf"><h2 style="margin:0">Vom Trainerteam</h2><a class="klein" href="#/infos">alle ›</a></div>${hinweiseKarte(true)}</section>` : "";
   return `<p class="unterzeile">${meinVorname() ? "Hallo " + esc(meinVorname()) : "Willkommen"}</p><h1>Die nächsten Spiele</h1>
   ${installKarte()}
+  ${!meinKind() && Z.rolle !== "trainer" ? `<section class="karte sohn-fehlt"><div><strong>Wer ist dein Sohn?</strong>
+      <div class="leise klein">Einmal auswählen, dann sind deine Einträge eurer Familie zugeordnet und du kannst bei Terminen und Abfragen antworten.</div></div>
+      <button class="knopf klein" data-aktion="name-aendern">Jetzt auswählen</button></section>` : ""}
   ${infos}
   ${terminHinweis}
   ${karten.length ? karten.map((k, i) => `<div class="${i ? "abstand" : ""}">${k}</div>`).join("") : `<section class="karte"><p class="leer">Gerade steht kein Spiel an.</p></section>`}
