@@ -258,11 +258,14 @@ function aufgabe({ status = "offen", titel, stand = "", detail = "", knopf = "" 
     ${knopf ? `<div class="aufgabe-knopf">${knopf}</div>` : ""}</li>`;
 }
 // Name mit Sohn anzeigen. Fehlt der Sohn im Eintrag, hilft die Zuordnung aus der Verwaltung.
+// Angezeigt wird nur der Vorname (Datensparsamkeit), auch wenn jemand den Nachnamen mit eingetragen hat.
 function anzeigeName(name) {
   const n = (name || "").trim();
   const f = (Z.einstellungen.namenZuordnung || {})[n.toLowerCase()];
-  const basis = n.replace(/\s*\([^()]+\)\s*$/, "");
-  return f && f !== "-" && f !== "Trainer" ? `${basis} (${f})` : n;
+  const klammer = /\(([^()]+)\)\s*$/.exec(n);
+  const basis = n.replace(/\s*\([^()]+\)\s*$/, "").split(/\s+/)[0] || n;
+  const sohn = f && f !== "-" ? f : klammer ? klammer[1].trim() : "";
+  return sohn ? `${basis} (${sohn})` : basis;
 }
 const wer = (liste) => liste.map((x) => `${esc(anzeigeName(x.name))}${x.eigen ? " · du" : ""}`).join(", ");
 const offenZaehler = (html) => (html.match(/st-(offen|dringend)/g) || []).length;
@@ -1246,7 +1249,7 @@ function cateringText(s) {
   z.push(dienst.length ? `${frei ? "" : "✅ "}${dienst.join(", ")}` : "");
   if (frei) z.push(`❗ noch ${frei} ${frei === 1 ? "Platz" : "Plätze"} frei`);
   if ((e.reservePlaetze ?? 1) > 0) z.push(reserve.length ? `Reserve: ${reserve.join(", ")}` : "Reserve: noch frei");
-  if (zeitnehmerNoetig(s)) z.push(`⏱ Zeitnehmer: ${zeitnehmerVon(s).map((x) => x.name).join(", ") || "❗ noch offen"}`);
+  if (zeitnehmerNoetig(s)) z.push(`⏱ Zeitnehmer: ${zeitnehmerVon(s).map((x) => anzeigeName(x.name)).join(", ") || "❗ noch offen"}`);
   if (waescheNoetig(s)) {
     const vor = vorherigesHeim(s), bringt = vor && waescheVon(vor);
     if (bringt) z.push(`🧺 Wäsche bringt mit: ${bringt.name}`);
@@ -1384,13 +1387,13 @@ function fahrtenText(s) {
   const z = [`🚗 Fahrgemeinschaften Auswärtsspiel ${wtDatum(s)}${s.zeit ? " " + s.zeit + " Uhr" : ""} bei ${s.gegner}`];
   if (s.halle) z.push(`📍 ${s.halle}`);
   if (treffzeit(s)) z.push(`⏰ Jungs spätestens um ${treffzeit(s)} Uhr in der Halle`);
-  if (zeitnehmerNoetig(s)) z.push(`⏱ Zeitnehmer: ${zeitnehmerVon(s).map((x) => x.name).join(", ") || "❗ noch offen"}`);
+  if (zeitnehmerNoetig(s)) z.push(`⏱ Zeitnehmer: ${zeitnehmerVon(s).map((x) => anzeigeName(x.name)).join(", ") || "❗ noch offen"}`);
   z.push("");
   if (!st.fahrten.length) z.push("❗ Bisher bietet noch niemand Plätze an.");
   for (const f of st.fahrten) {
     const mit = Z.mitfahrer.filter((m) => m.fahrtId === f.id).map((m) => m.name);
     const frei = f.plaetze - mit.length;
-    z.push(`${f.fahrer}${f.treffpunkt ? " · " + f.treffpunkt : ""}: ${mit.length ? mit.join(", ") : "noch niemand"}${frei > 0 ? ` (noch ${frei} frei)` : " (voll)"}`);
+    z.push(`${anzeigeName(f.fahrer)}${f.treffpunkt ? " · " + f.treffpunkt : ""}: ${mit.length ? mit.join(", ") : "noch niemand"}${frei > 0 ? ` (noch ${frei} frei)` : " (voll)"}`);
   }
   z.push("", `Eintragen: ${location.origin}/#/fahrten`);
   return z.join("\n");
@@ -1514,7 +1517,7 @@ function willkommen({ nurName = false } = {}) {
           <li>Was du zugesagt hast, steht auf der Startseite unter <strong>Meine Termine</strong>.</li>
           <li>Absprachen laufen weiter über WhatsApp.</li>
         </ul>`}
-      <label for="w-name">Dein Vorname</label>
+      <label for="w-name">Dein Vorname <span class="leise klein">(bitte ohne Nachnamen)</span></label>
       <input id="w-name" type="text" maxlength="40" required value="${esc(meinVorname())}" placeholder="z. B. Peggy" autocomplete="given-name">
       <label for="w-kind" class="abstand" style="margin-top:12px">Dein Sohn in der Mannschaft</label>
       <select id="w-kind"><option value="">${Z.rolle === "trainer" ? "kein Sohn, ich bin Trainer" : "bitte wählen …"}</option>${kader().map((k) => `<option ${k.vorname === meinKind() ? "selected" : ""}>${esc(k.vorname)}</option>`).join("")}</select>
@@ -1526,7 +1529,9 @@ function willkommen({ nurName = false } = {}) {
     const schliessen = (wert) => { lokal("otv_willkommen", "1"); box.remove(); fertig(wert); };
     box.querySelector("form").addEventListener("submit", (e) => {
       e.preventDefault();
-      const vorname = box.querySelector("#w-name").value.trim();
+      const eingabe = box.querySelector("#w-name").value.trim();
+      const vorname = eingabe.split(/\s+/)[0];
+      if (vorname !== eingabe) meldung(`Gespeichert wird nur der Vorname: ${vorname}`);
       const kind = box.querySelector("#w-kind").value;
       if (!vorname) return;
       lokal("otv_vorname", vorname);
@@ -2158,6 +2163,17 @@ document.addEventListener("visibilitychange", stillAktualisieren);
 window.addEventListener("focus", stillAktualisieren);
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+
+// Früher eingegebene Nachnamen auf dem Gerät entfernen, damit neue Einträge nur den Vornamen tragen
+(() => {
+  const v = (lokal("otv_vorname") || "").trim();
+  if (v && /\s/.test(v)) {
+    const nur = v.split(/\s+/)[0];
+    lokal("otv_vorname", nur);
+    const k = lokal("otv_kind");
+    lokal("otv_name", k ? `${nur} (${k})` : (lokal("otv_name") || "").includes("(Trainer)") ? `${nur} (Trainer)` : nur);
+  }
+})();
 
 laden().then(() => {
   zeigen();
