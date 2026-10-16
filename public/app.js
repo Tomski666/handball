@@ -418,12 +418,44 @@ function seiteMannschaft() {
   </div>`;
 }
 
+// ---------- Kalender-Abo ----------
+let kalenderPfad = null;
+function kalenderAboKarte() {
+  if (kalenderPfad === null) {
+    kalenderPfad = "";
+    api("GET", "/api/kalender-link").then((r) => { kalenderPfad = r.pfad; if (location.hash.startsWith("#/spiele")) zeigen(); }).catch(() => { kalenderPfad = null; });
+  }
+  const https = kalenderPfad ? location.origin + kalenderPfad : "";
+  const webcal = kalenderPfad ? "webcal://" + location.host + kalenderPfad : "";
+  const android = /Android/i.test(navigator.userAgent);
+  return `<details class="karte kalender-abo formular-klappe"><summary>Spiele und Termine im Handy-Kalender</summary>
+    <p class="abstand">Einmal abonnieren, dann stehen alle Spiele automatisch in deinem Kalender und bleiben aktuell, auch wenn sich eine Anwurfzeit oder Halle ändert.</p>
+    <p class="hinweis info" style="margin-bottom:12px"><strong>Gut zu wissen:</strong> Im Abo stehen nicht nur die Spiele, sondern auch andere Termine der Mannschaft, zum Beispiel Weihnachtsfeier oder Elternabend. Namen oder Einträge von Eltern stehen nicht darin.</p>
+    ${kalenderPfad ? `<div class="ausrichten">
+      ${android ? "" : `<a class="knopf" href="${webcal}">Kalender abonnieren</a>`}
+      <button class="knopf ${android ? "" : "zweit"}" data-aktion="kalender-link-kopieren" data-link="${https}">Link kopieren</button>
+    </div>
+    <details class="abstand"><summary>${android ? "So geht es mit Android und Google Kalender" : "Android oder Google Kalender? So geht es"}</summary>
+      <ol class="schritte abstand">
+        <li>Oben auf <strong>„Link kopieren“</strong> tippen.</li>
+        <li>Im Browser <strong>calendar.google.com</strong> öffnen (am besten am PC, in der Handy-App geht es leider nicht).</li>
+        <li>Links bei „Weitere Kalender“ auf <strong>+</strong> und dann <strong>„Per URL“</strong>.</li>
+        <li>Link einfügen und <strong>„Kalender hinzufügen“</strong>. Nach kurzer Zeit erscheint er auch in der App auf dem Handy.</li>
+      </ol>
+      <p class="leise klein">Google Kalender aktualisiert Abos nur alle paar Stunden. Kurzfristige Änderungen am Spieltag kommen weiter über WhatsApp.</p>
+    </details>
+    <p class="leise klein abstand">Den Link bitte nur innerhalb der Mannschaft weitergeben. ${kommende(spieleSortiert()).length ? `<button class="link-knopf" data-aktion="kalender-spiele">Spiele stattdessen einmalig als Datei laden</button>` : ""}</p>`
+      : `<p class="leise">Link wird geladen …</p>`}
+  </details>`;
+}
+
 function seiteSpiele() {
   const e = Z.einstellungen;
   const liste = spieleSortiert();
   const k = kommende(liste), v = vergangene(liste);
   const zeile = (s) => `<li class="spiel-mit-zn">${spielZeile(s)}${zeitnehmerKurz(s)}${istAdmin() ? `<span class="ausrichten"><button class="knopf klein zweit" data-aktion="spiel-bearbeiten" data-id="${s.id}">Bearbeiten</button><button class="knopf klein gefahr" data-aktion="loeschen" data-col="spiele" data-id="${s.id}" data-frage="Spiel löschen? Standdienst-, Catering- und Trikot-Einträge zu diesem Spiel bleiben erhalten, werden aber nicht mehr angezeigt.">Löschen</button></span>` : ""}</li>`;
   return `${kopfzeile("Was passiert wann und wo?", "Spiele")}
+  ${kalenderAboKarte()}
   <div class="raster-2">
     <section class="karte">
       <h2>Spielplan und Tabelle</h2>
@@ -433,7 +465,7 @@ function seiteSpiele() {
       <a class="knopf zweit" href="${esc(e.handballNetUrl)}" target="_blank" rel="noopener">Auf handball.net öffnen</a>
     </section>
     <section class="karte">
-      <div class="karte-kopf"><h2 style="margin:0">Unsere Termine</h2>${k.length ? `<button class="knopf klein zweit" data-aktion="kalender-spiele">Alle Spiele in den Kalender</button>` : ""}</div>
+      <div class="karte-kopf"><h2 style="margin:0">Unsere Termine</h2></div>
       <p class="leise">Aus diesen Spielen entstehen die Catering-Liste (Heimspiele) und der Trikot-Waschplan (alle Spiele).</p>
       ${k.length ? `<ul class="liste">${k.map(zeile).join("")}</ul>` : `<p class="leer">Keine kommenden Spiele eingetragen.</p>`}
       ${v.length ? `<details class="abstand"><summary>Vergangene Spiele (${v.length})</summary><ul class="liste">${v.reverse().map(zeile).join("")}</ul></details>` : ""}
@@ -808,6 +840,10 @@ function seiteVerwaltung() {
   const trainer = [...Z.trainer].sort((a, b) => a.reihenfolge - b.reihenfolge);
   return `${kopfzeile("Nur für die Kassenführung", "Verwaltung")}
   ${helferUebersicht()}
+  <section class="karte abstand"><h2>Kalender-Abo</h2>
+    <p class="leise klein">Eltern abonnieren unter „Spiele“ einen Link mit allen Spielen und Terminen. Falls der Link an die falschen Leute geraten ist, hier einen neuen erzeugen. Danach müssen alle einmal neu abonnieren.</p>
+    <button class="knopf zweit klein" data-aktion="kalender-link-neu">Neuen Kalender-Link erzeugen</button>
+  </section>
   <div class="raster-2">
     <section class="karte">
       <h2>Kader (nur Vornamen)</h2>
@@ -1849,6 +1885,14 @@ inhalt.addEventListener("click", async (ev) => {
       el.disabled = true;
       await api("POST", "/api/c/catering", { spielId: el.dataset.spiel, artikel: el.dataset.artikel, name, menge: "" });
       await neuLaden(`Danke, du bringst ${el.dataset.artikel} mit`);
+    } else if (a === "kalender-link-kopieren") {
+      try { await navigator.clipboard.writeText(el.dataset.link); meldung("Link kopiert"); }
+      catch { window.prompt("Link zum Kopieren:", el.dataset.link); }
+    } else if (a === "kalender-link-neu") {
+      if (!confirm("Neuen Kalender-Link erzeugen? Der alte funktioniert dann nicht mehr, alle Eltern müssen neu abonnieren.")) return;
+      const r = await api("POST", "/api/kalender-link/neu");
+      kalenderPfad = r.pfad;
+      await neuLaden("Neuer Kalender-Link erzeugt");
     } else if (a === "kalender-spiele") {
       kalenderLaden(kommende(spieleSortiert()).map((sp) => ({
         key: "spiel-" + sp.id, spiel: sp, link: "#/spiele",

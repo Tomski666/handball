@@ -32,5 +32,6 @@ export const config = {
     "/img/icon-512.png",
     "/fonts/*",
     "/api/login",
+    "/api/kalender/*", // Kalender-Abo: Kalender-Apps können sich nicht anmelden, geschützt durch geheime Zeichenfolge
   ],
 };

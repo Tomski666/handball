@@ -218,6 +218,78 @@ const STARTDATEN = {
   ],
 };
 
+// ---------- Kalender-Abo ----------
+function gleich(a, b) {
+  let d = 0;
+  for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return d === 0;
+}
+const icsText = (t) => String(t || "").replace(/\\/g, "\\\\").replace(/;/g, "\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+function icsFalten(zeile) {
+  // Zeilen nach RFC 5545 bei 75 Bytes umbrechen
+  const enc = new TextEncoder();
+  if (enc.encode(zeile).length <= 75) return zeile;
+  const teile = []; let akt = "";
+  for (const z of zeile) {
+    if (enc.encode(akt + z).length > (teile.length ? 74 : 75)) { teile.push(akt); akt = ""; }
+    akt += z;
+  }
+  teile.push(akt);
+  return teile.join("\r\n ");
+}
+const plusMinuten = (zeit, min) => {
+  const [h, m] = zeit.split(":").map(Number);
+  const t = Math.max(0, Math.min(23 * 60 + 59, h * 60 + m + min));
+  return `${String(Math.floor(t / 60)).padStart(2, "0")}${String(t % 60).padStart(2, "0")}00`;
+};
+const naechsterTag = (iso) => { const d = new Date(iso + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + 1); return d.toISOString().slice(0, 10).replace(/-/g, ""); };
+
+async function kalenderIcs(store) {
+  const e = await einstellungen(store);
+  const vorlauf = e.standdienstVorlauf ?? 60;
+  const hallen = e.hallen || [];
+  const halleAdresse = (name) => {
+    const n = (name || "").trim().toLowerCase();
+    const h = n && (hallen.find((x) => x.name.toLowerCase() === n) || hallen.find((x) => n.includes(x.name.toLowerCase())));
+    return h ? h.adresse : "";
+  };
+  const ab = new Date(Date.now() - 60 * 864e5).toISOString().slice(0, 10);
+  const spiele = (await liste(store, "spiele")).filter((s) => s.datum >= ab);
+  const termine = (await liste(store, "termine")).filter((t) => t.datum >= ab);
+  const stempel = new Date().toISOString().replace(/[-:]/g, "").slice(0, 15) + "Z";
+  const z = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//OTV C-Jugend//Elternseite//DE", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
+    "X-WR-CALNAME:OTV männliche C-Jugend", "X-WR-TIMEZONE:Europe/Berlin", "REFRESH-INTERVAL;VALUE=DURATION:PT1H", "X-PUBLISHED-TTL:PT1H",
+    "BEGIN:VTIMEZONE", "TZID:Europe/Berlin",
+    "BEGIN:DAYLIGHT", "TZOFFSETFROM:+0100", "TZOFFSETTO:+0200", "TZNAME:CEST", "DTSTART:19700329T020000", "RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU", "END:DAYLIGHT",
+    "BEGIN:STANDARD", "TZOFFSETFROM:+0200", "TZOFFSETTO:+0100", "TZNAME:CET", "DTSTART:19701025T030000", "RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU", "END:STANDARD",
+    "END:VTIMEZONE"];
+  for (const s of spiele) {
+    const d = s.datum.replace(/-/g, "");
+    const ort = [s.halle, halleAdresse(s.halle)].filter(Boolean).join(", ");
+    const beschr = [s.heim ? "Heimspiel" : "Auswärtsspiel",
+      s.zeit ? `Die Jungs sind ${vorlauf} Minuten vor Anwurf in der Halle (${plusMinuten(s.zeit, -vorlauf).slice(0, 2)}:${plusMinuten(s.zeit, -vorlauf).slice(2, 4)} Uhr).` : "",
+      s.hinweis || ""].filter(Boolean).join("\n");
+    z.push("BEGIN:VEVENT", `UID:spiel-${s.id}@otv-c-jugend`, `DTSTAMP:${stempel}`);
+    if (s.zeit) z.push(`DTSTART;TZID=Europe/Berlin:${d}T${s.zeit.replace(":", "")}00`, `DTEND;TZID=Europe/Berlin:${d}T${plusMinuten(s.zeit, 90)}`);
+    else z.push(`DTSTART;VALUE=DATE:${d}`, `DTEND;VALUE=DATE:${naechsterTag(s.datum)}`);
+    z.push(`SUMMARY:${icsText(`Handball: ${s.heim ? "OTV gegen " + s.gegner : s.gegner + " gegen OTV"}`)}`);
+    if (ort) z.push(`LOCATION:${icsText(ort)}`);
+    z.push(`DESCRIPTION:${icsText(beschr)}`, "END:VEVENT");
+  }
+  for (const t of termine) {
+    const d = t.datum.replace(/-/g, "");
+    const ort = [t.ort, halleAdresse(t.ort)].filter(Boolean).join(", ");
+    z.push("BEGIN:VEVENT", `UID:termin-${t.id}@otv-c-jugend`, `DTSTAMP:${stempel}`);
+    if (t.zeit) z.push(`DTSTART;TZID=Europe/Berlin:${d}T${t.zeit.replace(":", "")}00`, `DTEND;TZID=Europe/Berlin:${d}T${plusMinuten(t.zeit, 180)}`);
+    else z.push(`DTSTART;VALUE=DATE:${d}`, `DTEND;VALUE=DATE:${naechsterTag(t.datum)}`);
+    z.push(`SUMMARY:${icsText("C-Jugend: " + t.titel)}`);
+    if (ort) z.push(`LOCATION:${icsText(ort)}`);
+    z.push(`DESCRIPTION:${icsText("Rückmeldung und Details auf der Elternseite.")}`, "END:VEVENT");
+  }
+  z.push("END:VCALENDAR");
+  return z.map(icsFalten).join("\r\n") + "\r\n";
+}
+
 // ---------- Hilfen ----------
 const json = (data, status = 200, headers = {}) =>
   new Response(JSON.stringify(data), {
@@ -392,6 +464,17 @@ export default async (request) => {
     return json({ rolle }, 200, { "set-cookie": sessionCookie(token, SESSION_DAYS * 86400) });
   }
 
+  // Kalender-Abo (ohne Anmeldung, nur mit geheimer Zeichenfolge in der Adresse)
+  if (teile[0] === "kalender" && teile[1] && methode === "GET") {
+    const store = daten();
+    const token = await store.get("kalender-token", { type: "text" });
+    const angefragt = teile[1].replace(/\.ics$/, "");
+    if (!token || angefragt.length !== token.length || !gleich(angefragt, token)) return new Response("Nicht gefunden", { status: 404 });
+    return new Response(await kalenderIcs(store), {
+      headers: { "content-type": "text/calendar; charset=utf-8", "cache-control": "public, max-age=900", "content-disposition": 'inline; filename="otv-c-jugend.ics"' },
+    });
+  }
+
   const sitzung = await readSession(secret, getCookie(request, COOKIE_NAME));
   if (!sitzung) return fehler("Nicht angemeldet", 401);
   const rolle = sitzung.r;
@@ -409,6 +492,18 @@ export default async (request) => {
     }
 
     const store = daten();
+
+    // Kalender-Abo: Link abrufen (legt die Zeichenfolge beim ersten Mal an) oder neu erzeugen (nur Kasse)
+    if (teile[0] === "kalender-link") {
+      let token = await store.get("kalender-token", { type: "text" });
+      const neu = methode === "POST" && teile[1] === "neu";
+      if (neu && rolle !== "kasse") return fehler("Nur für die Kassenführung", 403);
+      if (!token || neu) {
+        token = Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) => b.toString(16).padStart(2, "0")).join("");
+        await store.set("kalender-token", token);
+      }
+      return json({ pfad: `/api/kalender/${token}.ics` });
+    }
 
     // Gesamtzustand für die Seite
     if (teile[0] === "zustand" && methode === "GET") {

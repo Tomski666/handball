@@ -555,3 +555,4 @@ details.bearbeiten textarea { min-height: 80px; }
 .halle-adresse { font-size: 14px; color: var(--text-leise); margin: -4px 0 10px; }
 .training-halle { text-align: right; }
 .training-halle .link-knopf { font-weight: 600; }
+.kalender-abo { margin-bottom: 20px; }
