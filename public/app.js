@@ -174,7 +174,7 @@ function meineTermine() {
   const kommt = (sp) => sp && sp.datum >= heute();
   for (const d of Z.standdienst.filter((x) => x.eigen)) {
     const sp = spiel(d.spielId);
-    if (kommt(sp)) t.push({ key: "s" + d.id, spiel: sp, text: d.reserve ? "Du bist Reserve beim Standdienst" : `Du hast Standdienst${treffzeit(sp) ? ` (spätestens ${treffzeit(sp)} Uhr da sein)` : ""}`, standdienst: true, link: "#/catering" });
+    if (kommt(sp)) t.push({ key: "s" + d.id, spiel: sp, text: d.reserve ? "Du bist Reserve beim Standdienst" : `Du hast Standdienst${d.nachgerueckt ? " (nachgerückt)" : ""}${treffzeit(sp) ? `, ab ${treffzeit(sp)} Uhr` : ""}`, standdienst: true, link: "#/catering" });
   }
   for (const c of Z.catering.filter((x) => x.eigen)) {
     const sp = spiel(c.spielId);
@@ -291,9 +291,10 @@ function heimAufgaben(s) {
   const dienst = Z.standdienst.filter((x) => x.spielId === s.id && !x.reserve);
   const ichDienst = dienst.some((x) => x.eigen);
   const frei = st.plaetze - st.dienst;
+  const bald = (datum(s.datum) - datum(heute())) / 864e5 <= 3;
   const z = [{
-    status: frei > 0 ? "offen" : "ok", titel: "Standdienst", kurz: "Standdienst",
-    stand: `${st.dienst} von ${st.plaetze}`,
+    status: frei > 0 ? (bald ? "dringend" : "offen") : "ok", titel: "Standdienst", kurz: "Standdienst",
+    stand: `${st.dienst} von ${st.plaetze}${frei > 0 && bald ? " · dringend" : ""}`,
     detail: [dienst.length ? wer(dienst) : "", treffzeit(s) ? `ab ${treffzeit(s)} Uhr in der Halle` : ""].filter(Boolean).join(" · "),
     knopf: frei > 0 && !ichDienst ? `<button class="knopf klein" data-aktion="standdienst-ich" data-spiel="${s.id}">Ich übernehme</button>` : "",
   }];
@@ -383,15 +384,15 @@ function seiteStart() {
     ? `<p class="danach"><a href="#/catering" data-aktion="springen-catering" data-id="${naechstesHeim.id}">Nächstes Heimspiel am ${datum(naechstesHeim.datum).toLocaleDateString("de-DE", { day: "numeric", month: "numeric" })}: Catering eintragen ›</a></p>` : "";
 
   const termine = meineTermine();
-  const meine = `<section class="karte">
-    <div class="karte-kopf" style="margin-bottom:4px"><h2 style="margin:0">Meine Termine</h2>
-      ${termine.length > 1 ? `<button class="link-knopf" data-aktion="kalender" data-alle="1">Alle in den Kalender</button>` : ""}</div>
-    ${termine.length ? `<ul class="liste">${termine.map((t) => `<li>
-        <a class="termin" href="${t.link}">${datumBlock(t.spiel.datum)}<span><strong>${esc(t.text)}</strong>
-          <span class="leise klein">${t.spiel.zeit ? esc(t.spiel.zeit) + " Uhr · " : ""}${t.spiel.titel ? esc(t.spiel.ort || "") : (t.spiel.heim ? "gegen " : "bei ") + esc(t.spiel.gegner)}</span></span></a>
-        <button class="knopf zweit klein" data-aktion="kalender" data-key="${t.key}" aria-label="In den Kalender">Kalender</button></li>`).join("")}</ul>`
-      : `<p class="leer">Du hast dich noch nirgends eingetragen. Oben geht es mit einem Klick.</p>`}
-  </section>`;
+  const aufgabeLi = (t) => `<li><a class="meine-aufgabe" href="${t.link}"><span class="ma-datum">${wochentagKurz(t.spiel.datum)} ${kurzDatum(t.spiel.datum)}</span>
+      <span class="ma-text"><strong>${esc(t.text)}</strong><span class="leise klein">${t.spiel.titel ? esc(t.spiel.ort || "") : (t.spiel.heim ? "gegen " : "bei ") + esc(t.spiel.gegner)}</span></span></a>
+    <button class="link-knopf klein" data-aktion="kalender" data-key="${t.key}" aria-label="In den Kalender">Kalender</button></li>`;
+  const meine = termine.length ? `<section class="karte deine-aufgaben">
+    <div class="karte-kopf"><h2 style="margin:0">Deine Aufgaben</h2>
+      ${termine.length > 1 ? `<button class="link-knopf klein" data-aktion="kalender" data-alle="1">Alle in den Kalender</button>` : ""}</div>
+    <ul class="liste">${termine.slice(0, 4).map(aufgabeLi).join("")}</ul>
+    ${termine.length > 4 ? `<details><summary class="klein">Alle anzeigen (${termine.length})</summary><ul class="liste">${termine.slice(4).map(aufgabeLi).join("")}</ul></details>` : ""}
+  </section>` : "";
 
   const terminHinweis = offeneRueckmeldungen().filter((x) => !x.meins).map((x) => `<a class="termin-hinweis ${fristBald(x.frist) ? "dringend" : ""}" href="#/infos"><span><strong>${esc(x.titel)}</strong>${x.datum ? ` am ${kurzDatum(x.datum)}` : ""}: bitte ${meinKind() ? `für ${esc(meinKind())} ` : ""}${x.art === "termin" ? "zurückmelden" : "antworten"}${x.frist && x.frist >= heute() ? ` <span class="frist-text">bis ${wochentagKurz(x.frist)} ${kurzDatum(x.frist)}</span>` : ""}</span> ›</a>`).join("");
 
@@ -402,10 +403,10 @@ function seiteStart() {
       <div class="leise klein">Einmal auswählen, dann sind deine Einträge eurer Familie zugeordnet und du kannst bei Terminen und Abfragen antworten.</div></div>
       <button class="knopf klein" data-aktion="name-aendern">Jetzt auswählen</button></section>` : ""}
   ${infos}
+  ${meine}
   ${terminHinweis}
   ${karten.length ? karten.map((k, i) => `<div class="${i ? "abstand" : ""}">${k}</div>`).join("") : `<section class="karte"><p class="leer">Gerade steht kein Spiel an.</p></section>`}
-  ${heimHinweis}
-  <div class="abstand">${meine}</div>`;
+  ${heimHinweis}`;
 }
 
 function seiteMannschaft() {
@@ -846,16 +847,8 @@ function seiteVerwaltung() {
   if (!istAdmin()) return `${kopfzeile("", "Verwaltung")}<p>Nur für die Kassenführung.</p>`;
   const e = Z.einstellungen;
   const trainer = [...Z.trainer].sort((a, b) => a.reihenfolge - b.reihenfolge);
-  return `${kopfzeile("Nur für die Kassenführung", "Verwaltung")}
-  ${helferUebersicht()}
-  <section class="karte abstand"><h2>Kalender-Abo</h2>
-    <p class="leise klein">Eltern abonnieren unter „Spiele“ einen Link mit allen Spielen und Terminen. Falls der Link an die falschen Leute geraten ist, hier einen neuen erzeugen. Danach müssen alle einmal neu abonnieren.</p>
-    <button class="knopf zweit klein" data-aktion="kalender-link-neu">Neuen Kalender-Link erzeugen</button>
-  </section>
-  <div class="raster-2">
-    <section class="karte">
-      <h2>Kader (nur Vornamen)</h2>
-      <p class="leise">Die Reihenfolge bestimmt den Trikot-Waschplan.</p>
+  const bereich = (titel, unter, inhalt, offen = false) => `<details class="karte verwaltung-bereich formular-klappe" ${offen ? "open" : ""}><summary><span>${titel}<span class="leise klein bereich-unter">${unter}</span></span></summary><div class="abstand">${inhalt}</div></details>`;
+  const kaderHtml = `<p class="leise klein">Nur Vornamen. Die Reihenfolge bestimmt den Trikot-Waschplan.</p>
       <ul class="liste">${kader().map((k, i) => `<li><span>${i + 1}. <strong>${esc(k.vorname)}</strong>${k.nummer ? ` <span class="leise">#${esc(k.nummer)}</span>` : ""}</span>
         <button class="link-knopf" style="color:var(--rot)" data-aktion="loeschen" data-col="kader" data-id="${k.id}" data-frage="${esc(k.vorname)} aus dem Kader entfernen?">entfernen</button></li>`).join("")}</ul>
       <form class="zeile abstand" data-form="kader">
@@ -863,56 +856,8 @@ function seiteVerwaltung() {
         <div class="feld" style="flex-basis:80px"><label>Nr.</label><input type="text" name="nummer" maxlength="3"></div>
         <div class="feld" style="flex-basis:90px"><label>Reihenf.</label><input type="number" name="reihenfolge" value="${kader().length + 1}"></div>
         <button class="knopf">Hinzufügen</button>
-      </form>
-    </section>
-    <section class="karte">
-      <h2>Einstellungen</h2>
-      <form data-form="einstellungen">
-        <div class="ausrichten">
-          <div class="feld"><label>Anfangsbestand (€)</label><input type="text" name="anfangsbestand" inputmode="decimal" value="${(e.anfangsbestand / 100).toFixed(2).replace(".", ",")}"></div>
-          <div class="feld"><label>Stichtag</label><input type="date" name="anfangsdatum" value="${esc(e.anfangsdatum)}"></div>
-          <div class="feld"><label>Standdienst-Plätze pro Heimspiel</label><input type="number" min="1" max="10" name="standdienstPlaetze" value="${e.standdienstPlaetze}"></div>
-          <div class="feld"><label>Reserveplätze</label><input type="number" min="0" max="5" name="reservePlaetze" value="${e.reservePlaetze ?? 1}"></div>
-        </div>
-        <div class="ausrichten abstand">
-          <div class="feld" style="flex-basis:200px"><label>In der Halle sein (Minuten vor Anwurf, für Standdienst und Jungs)</label><input type="number" min="0" max="180" name="standdienstVorlauf" value="${e.standdienstVorlauf ?? 60}"></div>
-        </div>
-        <label>Infotext Standdienst</label><textarea name="standdienstInfo" style="min-height:70px" maxlength="400">${esc(e.standdienstInfo || "")}</textarea>
-        <label class="abstand">Vorrat (je Zeile: Artikel | Menge beim Nachkaufen)</label>
-        <textarea name="vorratArtikel" style="min-height:110px">${esc((e.vorratArtikel || []).map((a) => `${a.name} | ${a.hinweis || ""}`).join("\n"))}</textarea>
-        <label class="abstand">Wäsche, die nach jedem Heimspiel jemand mitnimmt (ein Teil pro Zeile, leer = ausgeschaltet)</label>
-        <textarea name="waescheArtikel" style="min-height:60px">${esc((e.waescheArtikel || []).join("\n"))}</textarea>
-        <div class="ausrichten abstand">
-          <div class="feld" style="flex-basis:200px"><label>Zeitnehmer gebraucht bei</label><select name="zeitnehmerBei"><option value="alle" ${e.zeitnehmerBei !== "heim" ? "selected" : ""}>allen Spielen</option><option value="heim" ${e.zeitnehmerBei === "heim" ? "selected" : ""}>nur Heimspielen</option></select></div>
-          <div class="feld" style="flex-basis:140px"><label>Zeitnehmer pro Spiel</label><input type="number" min="0" max="3" name="zeitnehmerPlaetze" value="${e.zeitnehmerPlaetze ?? 1}"></div>
-        </div>
-        <label class="schalter abstand"><input type="checkbox" name="galerieAktiv" ${e.galerieAktiv ? "checked" : ""}> Galerie für Eltern freigeben</label>
-        <div>
-        </div>
-        <label class="abstand">Liga</label><input type="text" name="liga" value="${esc(e.liga)}">
-        <label class="abstand">Text zur Mannschaft</label><textarea name="teamText">${esc(e.teamText)}</textarea>
-        <label class="abstand">Hallen mit Adresse (je Zeile: Name | Straße Nr., PLZ Ort). Daraus entsteht der Knopf „Route“ bei Spielen und Training.</label>
-        <textarea name="hallen" style="min-height:90px" placeholder="Humboldt | Humboldtstraße 1, 42651 Solingen">${esc((e.hallen || []).map((h) => `${h.name} | ${h.adresse}`).join("\n"))}</textarea>
-        <label class="abstand">Trainingszeiten (je Zeile: Tag | Uhrzeit | Halle). Der Hallenname muss wie oben geschrieben sein, dann erscheint die Route.</label>
-        <textarea name="trainingszeiten" style="min-height:70px">${esc(e.trainingszeiten.map((t) => `${t.tag} | ${t.zeit} | ${t.halle}`).join("\n"))}</textarea>
-        <label class="abstand">Mitbringliste (je Zeile: Artikel | Anzahl | Menge je Zusage | „bei Bedarf“, wenn nicht jedes Spiel nötig)</label>
-        <textarea name="cateringArtikel" style="min-height:110px">${esc(e.cateringArtikel.map((a) => `${a.name} | ${a.bedarf} | ${a.hinweis || ""}${a.immer === false ? " | bei Bedarf" : ""}`).join("\n"))}</textarea>
-        <label class="abstand">Kassen-Kategorien (eine pro Zeile)</label>
-        <textarea name="kassenKategorien" style="min-height:90px">${esc(e.kassenKategorien.join("\n"))}</textarea>
-        <label class="abstand">Zahlungskanäle (einer pro Zeile)</label>
-        <textarea name="kassenKanaele" style="min-height:70px">${esc(e.kassenKanaele.join("\n"))}</textarea>
-        <label class="abstand">handball.net Widget-Token (optional)</label>
-        <input type="text" name="widgetToken" value="${esc(e.widgetToken)}" placeholder="z. B. 585937e1379b81a963168635">
-        <p class="leise klein">Zu finden auf handball.net im Reiter Spielplan der Mannschaft unter „Füge den Spielplan deiner Website hinzu“.</p>
-        <label>Link zur Mannschaft auf handball.net</label>
-        <input type="text" name="handballNetUrl" value="${esc(e.handballNetUrl)}">
-        <button class="knopf abstand">Einstellungen speichern</button>
-      </form>
-    </section>
-  </div>
-  <p class="unterzeile abstand">Trainerteam</p>
-  <div class="raster abstand" style="margin-top:8px">
-    ${trainer.map((t) => `<section class="karte"><form data-form="trainer" data-id="${t.id}">
+      </form>`;
+  const trainerHtml = `<div class="raster">${trainer.map((t) => `<section class="karte flach"><form data-form="trainer" data-id="${t.id}">
       <label>Name</label><input type="text" name="name" value="${esc(t.name)}" maxlength="80" required>
       <div class="ausrichten abstand" style="margin-top:8px">
         <div class="feld"><label>Rolle</label><input type="text" name="rolle" value="${esc(t.rolle)}" maxlength="60"></div>
@@ -922,13 +867,65 @@ function seiteVerwaltung() {
       <div class="ausrichten abstand" style="margin-top:8px"><button class="knopf klein">Speichern</button>
         <button type="button" class="knopf klein gefahr" data-aktion="loeschen" data-col="trainer" data-id="${t.id}" data-frage="Trainer entfernen?">Entfernen</button></div>
     </form></section>`).join("")}
-    <section class="karte"><form data-form="trainer-neu">
+    <section class="karte flach"><form data-form="trainer-neu">
       <h3>Trainer hinzufügen</h3>
       <label>Name</label><input type="text" name="name" maxlength="80" required>
       <label class="abstand" style="margin-top:8px">Rolle</label><input type="text" name="rolle" value="Trainer" maxlength="60">
       <button class="knopf klein abstand">Hinzufügen</button>
-    </form></section>
-  </div>`;
+    </form></section></div>`;
+  const gruppe = (titel, inhalt) => `<fieldset class="einst-gruppe"><legend>${titel}</legend>${inhalt}</fieldset>`;
+  const einstellungen = `<form data-form="einstellungen">
+    ${gruppe("Mannschaft und Training", `
+      <label>Liga</label><input type="text" name="liga" value="${esc(e.liga)}">
+      <label class="abstand">Text zur Mannschaft</label><textarea name="teamText">${esc(e.teamText)}</textarea>
+      <label class="abstand">Hallen mit Adresse (je Zeile: Name | Straße Nr., PLZ Ort). Daraus entsteht der Knopf „Route“.</label>
+      <textarea name="hallen" style="min-height:90px" placeholder="Humboldt | Humboldtstraße 1, 42651 Solingen">${esc((e.hallen || []).map((h) => `${h.name} | ${h.adresse}`).join("\n"))}</textarea>
+      <label class="abstand">Trainingszeiten (je Zeile: Tag | Uhrzeit | Halle). Hallenname wie oben, dann erscheint die Route.</label>
+      <textarea name="trainingszeiten" style="min-height:70px">${esc(e.trainingszeiten.map((t) => `${t.tag} | ${t.zeit} | ${t.halle}`).join("\n"))}</textarea>`)}
+    ${gruppe("Heimspiel-Catering", `
+      <div class="ausrichten">
+        <div class="feld"><label>Standdienst-Plätze pro Heimspiel</label><input type="number" min="1" max="10" name="standdienstPlaetze" value="${e.standdienstPlaetze}"></div>
+        <div class="feld"><label>Reserveplätze</label><input type="number" min="0" max="5" name="reservePlaetze" value="${e.reservePlaetze ?? 1}"></div>
+        <div class="feld" style="flex-basis:200px"><label>In der Halle sein (Minuten vor Anwurf, für Standdienst und Jungs)</label><input type="number" min="0" max="180" name="standdienstVorlauf" value="${e.standdienstVorlauf ?? 60}"></div>
+      </div>
+      <label class="abstand">Infotext Standdienst</label><textarea name="standdienstInfo" style="min-height:70px" maxlength="400">${esc(e.standdienstInfo || "")}</textarea>
+      <label class="abstand">Mitbringliste (je Zeile: Artikel | Anzahl | Menge je Zusage | „bei Bedarf“, wenn nicht jedes Spiel nötig)</label>
+      <textarea name="cateringArtikel" style="min-height:110px">${esc(e.cateringArtikel.map((a) => `${a.name} | ${a.bedarf} | ${a.hinweis || ""}${a.immer === false ? " | bei Bedarf" : ""}`).join("\n"))}</textarea>
+      <label class="abstand">Vorrat (je Zeile: Artikel | Menge beim Nachkaufen)</label>
+      <textarea name="vorratArtikel" style="min-height:90px">${esc((e.vorratArtikel || []).map((a) => `${a.name} | ${a.hinweis || ""}`).join("\n"))}</textarea>
+      <label class="abstand">Wäsche, die nach jedem Heimspiel jemand mitnimmt (ein Teil pro Zeile, leer = aus)</label>
+      <textarea name="waescheArtikel" style="min-height:60px">${esc((e.waescheArtikel || []).join("\n"))}</textarea>`)}
+    ${gruppe("Zeitnehmer", `
+      <div class="ausrichten">
+        <div class="feld" style="flex-basis:200px"><label>Zeitnehmer gebraucht bei</label><select name="zeitnehmerBei"><option value="alle" ${e.zeitnehmerBei !== "heim" ? "selected" : ""}>allen Spielen</option><option value="heim" ${e.zeitnehmerBei === "heim" ? "selected" : ""}>nur Heimspielen</option></select></div>
+        <div class="feld" style="flex-basis:140px"><label>Zeitnehmer pro Spiel</label><input type="number" min="0" max="3" name="zeitnehmerPlaetze" value="${e.zeitnehmerPlaetze ?? 1}"></div>
+      </div>`)}
+    ${gruppe("Kasse", `
+      <div class="ausrichten">
+        <div class="feld"><label>Anfangsbestand (€)</label><input type="text" name="anfangsbestand" inputmode="decimal" value="${(e.anfangsbestand / 100).toFixed(2).replace(".", ",")}"></div>
+        <div class="feld"><label>Stichtag</label><input type="date" name="anfangsdatum" value="${esc(e.anfangsdatum)}"></div>
+      </div>
+      <label class="abstand">Kassen-Kategorien (eine pro Zeile)</label>
+      <textarea name="kassenKategorien" style="min-height:90px">${esc(e.kassenKategorien.join("\n"))}</textarea>
+      <label class="abstand">Zahlungskanäle (einer pro Zeile)</label>
+      <textarea name="kassenKanaele" style="min-height:70px">${esc(e.kassenKanaele.join("\n"))}</textarea>`)}
+    ${gruppe("Galerie und handball.net", `
+      <label class="schalter"><input type="checkbox" name="galerieAktiv" ${e.galerieAktiv ? "checked" : ""}> Galerie für Eltern freigeben</label>
+      <label class="abstand">Link zur Mannschaft auf handball.net</label>
+      <input type="text" name="handballNetUrl" value="${esc(e.handballNetUrl)}">
+      <label class="abstand">handball.net Widget-Token (optional)</label>
+      <input type="text" name="widgetToken" value="${esc(e.widgetToken)}" placeholder="z. B. 585937e1379b81a963168635">
+      <p class="leise klein">Zu finden auf handball.net im Reiter Spielplan unter „Füge den Spielplan deiner Website hinzu“.</p>`)}
+    <div class="speichern-leiste"><button class="knopf">Einstellungen speichern</button></div>
+  </form>`;
+  return `${kopfzeile("Nur für die Kassenführung", "Verwaltung")}
+  <p class="leise klein">Bereich antippen zum Öffnen. Alle Einstellungen speicherst du gemeinsam mit dem Knopf unten im Bereich „Einstellungen“.</p>
+  ${bereich("Helfer-Übersicht", "Wer hat wie oft geholfen, Namen zuordnen", helferUebersicht())}
+  ${bereich("Einstellungen", "Mannschaft, Training, Hallen, Catering, Zeitnehmer, Kasse, Galerie", einstellungen)}
+  ${bereich("Kader", `${kader().length} Spieler`, kaderHtml)}
+  ${bereich("Trainerteam", `${trainer.length} Trainer, Texte für die Mannschaftsseite`, trainerHtml)}
+  ${bereich("Kalender-Abo", "Link erneuern, falls er weitergegeben wurde", `<p class="leise klein">Eltern abonnieren unter „Spiele“ einen Link mit allen Spielen und Terminen. Falls der Link an die falschen Leute geraten ist, hier einen neuen erzeugen. Danach müssen alle einmal neu abonnieren.</p>
+    <button class="knopf zweit klein" data-aktion="kalender-link-neu">Neuen Kalender-Link erzeugen</button>`)}`;
 }
 
 function termineBereich() {
@@ -1033,8 +1030,7 @@ function helferUebersicht() {
   trikotPlan().filter((p) => p.erledigt).forEach((p) => { const f = p.familie.replace(/^Familie von /, ""); if (zeilen[f]) zeilen[f].trikots++; });
   const summe = (z) => z.standdienst + z.mitgebracht + z.gefahren + z.zeitnehmer + z.waesche + z.trikots;
   const liste = namen.map((n) => ({ n, z: zeilen[n], s: summe(zeilen[n]) })).sort((a, b) => a.s - b.s || a.n.localeCompare(b.n, "de"));
-  return `<section class="karte abstand">
-    <h2>Helfer-Übersicht</h2>
+  return `<section>
     <p class="leise klein">Nur für die Kassenführung sichtbar. Gezählt wird über den Namen in Klammern, z. B. „Peggy (Piet)“. Oben stehen die Familien, die bisher am wenigsten gemacht haben.</p>
     <div class="tabelle-wrap"><table class="helfer-tabelle">
       <thead><tr><th>Familie</th><th>Stand&shy;dienst</th><th>Mit&shy;gebracht</th><th>Gefahren</th><th>Zeit&shy;nehmer</th><th>Wäsche</th><th>Trikots</th><th>Gesamt</th></tr></thead>
@@ -1812,8 +1808,8 @@ inhalt.addEventListener("click", async (ev) => {
   try {
     if (a === "loeschen") {
       if (el.dataset.frage && !confirm(el.dataset.frage)) return;
-      await api("DELETE", `/api/c/${el.dataset.col}/${el.dataset.id}`);
-      await neuLaden("Entfernt");
+      const r = await api("DELETE", `/api/c/${el.dataset.col}/${el.dataset.id}`);
+      await neuLaden(r && r.nachgerueckt ? `Ausgetragen. ${anzeigeName(r.nachgerueckt)} rückt von der Reserve nach.` : "Entfernt");
     } else if (a === "standdienst-ich") {
       const name = await nameSicherstellen();
       offeneSpiele?.add(el.dataset.spiel);

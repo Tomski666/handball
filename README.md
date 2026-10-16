@@ -70,7 +70,7 @@ iPhone: Seite in Safari öffnen, Teilen, „Zum Home-Bildschirm“. Android: Chr
 
 ## Aufbau (ab Version 1.4)
 
-Startseite = alles zum nächsten Heim- und Auswärtsspiel. Seite **Spiele** = alle Spiele mit derselben Karte (Standdienst, Mitbringen, Fahrten, Zeitnehmer, Wäsche, Trikots), Filter Alle/Heim/Auswärts, darunter Vorrat, Kalender-Abo und handball.net. Die früheren Seiten Catering und Fahrten leiten auf die Spiele-Seite mit Filter um. Navigation unten: Start, Spiele, Infos, Kasse, Mehr.
+Startseite = alles zum nächsten Heim- und Auswärtsspiel. Seite **Spiele** = alle Spiele mit derselben Karte (Standdienst, Mitbringen, Fahrten, Zeitnehmer, Wäsche, Trikots), Filter Alle/Heim/Auswärts, darunter Vorrat, Kalender-Abo und handball.net. Die früheren Seiten Catering und Fahrten leiten auf die Spiele-Seite mit Filter um. Navigation unten: Start, Spiele, Infos, Kasse, Mehr. Ab 1.5: „Deine Aufgaben“ oben auf der Startseite, Verwaltung in aufklappbaren Bereichen, beim Austragen aus dem Standdienst rückt die erste Reserve automatisch nach.
 
 ## Bedienung für Eltern
 

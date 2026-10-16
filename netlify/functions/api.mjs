@@ -597,6 +597,15 @@ export default async (request) => {
           return fehler("Nur eigene Einträge können gelöscht werden", 403);
         }
         await store.delete(`${col}/${id}`);
+        // Standdienst-Absage: erste Reserve rückt automatisch nach
+        if (col === "standdienst" && !alt.reserve) {
+          const reserve = (await liste(store, "standdienst")).filter((x) => x.spielId === alt.spielId && x.reserve)
+            .sort((a, b) => (a.erstellt || "").localeCompare(b.erstellt || ""))[0];
+          if (reserve) {
+            await store.setJSON(`standdienst/${reserve.id}`, { ...reserve, reserve: false, nachgerueckt: true, geaendert: new Date().toISOString() });
+            return json({ ok: true, nachgerueckt: reserve.name });
+          }
+        }
         if (col === "abfragen") {
           for (const x of (await liste(store, "abfrageAntworten")).filter((x) => x.abfrageId === id)) await store.delete(`abfrageAntworten/${x.id}`);
         }
