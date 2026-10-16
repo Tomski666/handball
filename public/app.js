@@ -131,6 +131,20 @@ function abfahrtVorschlag(s) {
   const min = Math.max(0, h * 60 + m - 45);
   return `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
 }
+// Hallen mit Adresse (Verwaltung) und Route-Link zu Google Maps (öffnet auf dem Handy die Karten-App)
+function halleZu(name) {
+  const n = (name || "").trim().toLowerCase();
+  if (!n) return null;
+  const hallen = Z.einstellungen.hallen || [];
+  return hallen.find((h) => h.name.toLowerCase() === n) || hallen.find((h) => n.includes(h.name.toLowerCase()) || h.name.toLowerCase().includes(n)) || null;
+}
+function routeLink(name, klasse = "knopf klein zweit") {
+  const h = halleZu(name);
+  const ziel = h && h.adresse ? h.adresse : "";
+  return ziel ? `<a class="${klasse}" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ziel)}" target="_blank" rel="noopener">Route</a>` : "";
+}
+const halleAdresse = (name) => halleZu(name)?.adresse || "";
+
 function hallenZeile(s) {
   const t = treffzeit(s);
   return `<p class="info-zeile">${t ? `Die Jungs müssen spätestens um <strong>${t} Uhr</strong> in der Halle sein` : `Die Jungs müssen ${Z.einstellungen.standdienstVorlauf ?? 60} Minuten vor Anwurf in der Halle sein`} (${Z.einstellungen.standdienstVorlauf ?? 60} Minuten vor Anwurf). Abfahrt bitte entsprechend früher planen.</p>`;
@@ -209,7 +223,7 @@ function kalenderLaden(termine) {
   const z = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//OTV C-Jugend//DE", "CALSCALE:GREGORIAN"];
   for (const t of termine) {
     const s = t.spiel;
-    const titel = s.titel ? t.text : `${t.text.split(" · ")[0]}: ${s.heim ? "OTV gegen " + s.gegner : s.gegner + " gegen OTV"}`;
+    const titel = t.titel || (s.titel ? t.text : `${t.text.split(" · ")[0]}: ${s.heim ? "OTV gegen " + s.gegner : s.gegner + " gegen OTV"}`);
     z.push("BEGIN:VEVENT", `UID:${t.key}@otv-c-jugend`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, "").slice(0, 15)}Z`);
     if (s.zeit) {
       const start = t.standdienst && treffzeit(s) ? treffzeit(s) : s.zeit;
@@ -220,7 +234,8 @@ function kalenderLaden(termine) {
       z.push(`DTSTART;VALUE=DATE:${f(s.datum)}`);
     }
     z.push(`SUMMARY:${titel.replace(/[,;]/g, "\\$&")}`);
-    if (s.halle || s.ort) z.push(`LOCATION:${(s.halle || s.ort).replace(/[,;]/g, "\\$&")}`);
+    const ort = s.halle ? [s.halle, halleAdresse(s.halle)].filter(Boolean).join(", ") : s.ort;
+    if (ort) z.push(`LOCATION:${ort.replace(/[,;]/g, "\\$&")}`);
     z.push(`DESCRIPTION:${(t.text + "\\n" + location.origin + "/" + t.link).replace(/[,;]/g, "\\$&")}`);
     z.push("BEGIN:VALARM", "TRIGGER:-P1D", "ACTION:DISPLAY", "DESCRIPTION:Erinnerung OTV C-Jugend", "END:VALARM", "END:VEVENT");
   }
@@ -307,7 +322,8 @@ function auswaertsKarte(s) {
     status: "info",
     titel: "Treffen in der Halle",
     stand: treffzeit(s) ? `${treffzeit(s)} Uhr` : `${v} Min. vor Anwurf`,
-    detail: `${v} Minuten vor Anwurf. Abfahrt bitte entsprechend früher planen.`,
+    detail: `${s.halle ? esc(s.halle) + (halleAdresse(s.halle) ? ", " + esc(halleAdresse(s.halle)) : "") + ". " : "Halle folgt. "}${v} Minuten vor Anwurf, Abfahrt entsprechend früher planen.`,
+    knopf: routeLink(s.halle),
   })];
   if (!st.fahrten.length) {
     zeilen.push(aufgabe({ status: "offen", titel: "Fahrgemeinschaft", stand: "noch kein Fahrer",
@@ -383,7 +399,8 @@ function seiteMannschaft() {
     </section>
     <section class="karte">
       <h2>Trainingszeiten</h2>
-      <ul class="liste">${e.trainingszeiten.map((t) => `<li><div><strong>${esc(t.tag)}</strong><div class="leise">${esc(t.zeit)}</div></div><span>${esc(t.halle)}</span></li>`).join("")}</ul>
+      <ul class="liste">${e.trainingszeiten.map((t) => `<li><div><strong>${esc(t.tag)}</strong><div class="leise">${esc(t.zeit)}</div></div>
+        <div class="training-halle"><div>${esc(t.halle)}</div>${halleAdresse(t.halle) ? `<div class="leise klein">${esc(halleAdresse(t.halle))}</div>` : ""}${routeLink(t.halle, "link-knopf")}</div></li>`).join("")}</ul>
     </section>
   </div>
   <section class="karte abstand">
@@ -416,7 +433,7 @@ function seiteSpiele() {
       <a class="knopf zweit" href="${esc(e.handballNetUrl)}" target="_blank" rel="noopener">Auf handball.net öffnen</a>
     </section>
     <section class="karte">
-      <div class="karte-kopf"><h2 style="margin:0">Unsere Termine</h2></div>
+      <div class="karte-kopf"><h2 style="margin:0">Unsere Termine</h2>${k.length ? `<button class="knopf klein zweit" data-aktion="kalender-spiele">Alle Spiele in den Kalender</button>` : ""}</div>
       <p class="leise">Aus diesen Spielen entstehen die Catering-Liste (Heimspiele) und der Trikot-Waschplan (alle Spiele).</p>
       ${k.length ? `<ul class="liste">${k.map(zeile).join("")}</ul>` : `<p class="leer">Keine kommenden Spiele eingetragen.</p>`}
       ${v.length ? `<details class="abstand"><summary>Vergangene Spiele (${v.length})</summary><ul class="liste">${v.reverse().map(zeile).join("")}</ul></details>` : ""}
@@ -427,7 +444,7 @@ function seiteSpiele() {
           <div class="feld"><label>Datum</label><input type="date" name="datum" required></div>
           <div class="feld" style="flex-basis:110px"><label>Anwurf</label><input type="time" name="zeit"></div>
           <div class="feld"><label>Gegner</label><input type="text" name="gegner" required maxlength="80"></div>
-          <div class="feld"><label>Halle</label><input type="text" name="halle" maxlength="80"></div>
+          <div class="feld"><label>Halle</label><input type="text" name="halle" maxlength="80" list="hallen-liste"><datalist id="hallen-liste">${(Z.einstellungen.hallen || []).map((h) => `<option value="${esc(h.name)}">`).join("")}</datalist></div>
           <div class="feld" style="flex-basis:130px"><label>Art</label><select name="heim"><option value="true">Heimspiel</option><option value="false">Auswärts</option></select></div>
           <div class="feld" style="flex-basis:100%"><label>Hinweis (optional)</label><input type="text" name="hinweis" maxlength="300" placeholder="z. B. Treffpunkt 13:45 Uhr"></div>
           <button class="knopf">Speichern</button>
@@ -639,7 +656,7 @@ function seiteTrikots() {
   ${naechstes ? `<section class="karte trikot-naechstes"><span class="kachel-label">Als Nächstes dran</span>
     <div class="trikot-wer">${esc(kurz(naechstes.familie))}${meinKind() && kurz(naechstes.familie) === meinKind() ? ` <span class="pill offen">das seid ihr</span>` : ""}</div>
     <div class="leise">nach dem Spiel am ${wochentagKurz(naechstes.spiel.datum)} ${kurzDatum(naechstes.spiel.datum)} ${naechstes.spiel.heim ? "gegen" : "bei"} ${esc(naechstes.spiel.gegner)}</div></section>` : ""}
-  <div class="hinweis info">Die Reihenfolge ergibt sich aus dem Kader. Nach jedem Spiel nimmt die eingetragene Familie den Trikotsatz mit und bringt ihn zum nächsten Training gewaschen zurück. Wer nicht kann, tauscht einfach mit einer anderen Familie und ändert es hier.</div>
+  <div class="hinweis info">Die Reihenfolge ergibt sich aus dem Kader. Nach jedem Spiel nimmt die eingetragene Familie den Trikotsatz mit, wäscht ihn und bringt ihn zum nächsten Spiel wieder mit. Wer nicht kann, tauscht einfach mit einer anderen Familie und ändert es hier.</div>
   ${fam.length < 2 ? `<div class="hinweis">Es sind erst ${fam.length} Spieler im Kader eingetragen. Die Kassenführung ergänzt den Kader unter Verwaltung, dann verteilt sich der Plan automatisch.</div>` : ""}
   <section class="karte">
     ${plan.length ? `<div class="tabelle-wrap"><table>
@@ -830,7 +847,9 @@ function seiteVerwaltung() {
         </div>
         <label class="abstand">Liga</label><input type="text" name="liga" value="${esc(e.liga)}">
         <label class="abstand">Text zur Mannschaft</label><textarea name="teamText">${esc(e.teamText)}</textarea>
-        <label class="abstand">Trainingszeiten (je Zeile: Tag | Uhrzeit | Halle)</label>
+        <label class="abstand">Hallen mit Adresse (je Zeile: Name | Straße Nr., PLZ Ort). Daraus entsteht der Knopf „Route“ bei Spielen und Training.</label>
+        <textarea name="hallen" style="min-height:90px" placeholder="Humboldt | Humboldtstraße 1, 42651 Solingen">${esc((e.hallen || []).map((h) => `${h.name} | ${h.adresse}`).join("\n"))}</textarea>
+        <label class="abstand">Trainingszeiten (je Zeile: Tag | Uhrzeit | Halle). Der Hallenname muss wie oben geschrieben sein, dann erscheint die Route.</label>
         <textarea name="trainingszeiten" style="min-height:70px">${esc(e.trainingszeiten.map((t) => `${t.tag} | ${t.zeit} | ${t.halle}`).join("\n"))}</textarea>
         <label class="abstand">Mitbringliste (je Zeile: Artikel | Anzahl | Menge je Zusage | „bei Bedarf“, wenn nicht jedes Spiel nötig)</label>
         <textarea name="cateringArtikel" style="min-height:110px">${esc(e.cateringArtikel.map((a) => `${a.name} | ${a.bedarf} | ${a.hinweis || ""}${a.immer === false ? " | bei Bedarf" : ""}`).join("\n"))}</textarea>
@@ -893,7 +912,7 @@ function termineBereich() {
         ${kosten ? `<p class="leise klein" style="margin:8px 0 0">${euro(kosten)} pro zusätzlicher Person. Spieler und Trainer sind frei.</p>` : ""}
       </div>`
       : `<p class="hinweis">Bitte zuerst deinen Sohn auswählen, dann kannst du für eure Familie zu- oder absagen. <button class="link-knopf" data-aktion="name-aendern">Jetzt auswählen</button></p>`;
-    const verwaltung = istAdmin() ? `<details class="abstand"><summary>Rückmeldungen verwalten (${ant.length} von ${familien.length})</summary>
+    const verwaltung = istTrainer() ? `<details class="abstand"><summary>Verwalten und bearbeiten (${ant.length} von ${familien.length} Rückmeldungen)</summary>
         <p class="leise klein">Zu- und Absagen aus WhatsApp kannst du hier für jede Familie eintragen.</p>
         <div class="tabelle-wrap"><table class="antwort-tabelle">
           <thead><tr><th>Familie</th><th>Dabei?</th><th>+ Pers.</th>${kosten ? `<th class="betrag">Betrag</th><th>Bezahlt</th>` : ""}</tr></thead>
@@ -906,7 +925,7 @@ function termineBereich() {
                 <option value="" ${!a ? "selected" : ""}>offen</option><option value="ja" ${a && a.kommt ? "selected" : ""}>ja</option><option value="nein" ${a && !a.kommt ? "selected" : ""}>nein</option></select></td>
               <td><select data-aktion="antwort-admin" data-termin="${t.id}" data-familie="${esc(f)}" data-feld="personen" ${a && a.kommt ? "" : "disabled"}>${personenAuswahl(a?.personen)}</select></td>
               ${kosten ? `<td class="betrag">${betrag ? euro(betrag) : "–"}</td>
-              <td>${betrag ? (a.bezahlt ? `✓ <button class="link-knopf" data-aktion="antwort-bezahlt" data-termin="${t.id}" data-familie="${esc(f)}" data-wert="nein">zurück</button>` : `<button class="knopf klein" data-aktion="antwort-buchen" data-termin="${t.id}" data-familie="${esc(f)}">bezahlt + buchen</button>`) : ""}</td>` : ""}
+              <td>${!istAdmin() ? (a && a.bezahlt ? "✓" : "") : betrag ? (a.bezahlt ? `✓ <button class="link-knopf" data-aktion="antwort-bezahlt" data-termin="${t.id}" data-familie="${esc(f)}" data-wert="nein">zurück</button>` : `<button class="knopf klein" data-aktion="antwort-buchen" data-termin="${t.id}" data-familie="${esc(f)}">bezahlt + buchen</button>`) : ""}</td>` : ""}
             </tr>`;
           }).join("")}</tbody></table></div>
         ${kosten ? `<p class="abstand"><strong>Eingegangen:</strong> ${euro(bezahlt)} von ${euro(erwartet)}</p>` : ""}
@@ -929,9 +948,9 @@ function termineBereich() {
     </section>`;
   };
   return `${k.map((t, i) => `<div class="${i ? "abstand" : ""}">${karte(t)}</div>`).join("")}
-  ${!k.length && istAdmin() ? `<p class="leer">Gerade steht kein Termin an.</p>` : ""}
+  ${!k.length && istTrainer() ? `<p class="leer">Gerade steht kein Termin an.</p>` : ""}
   ${v.length ? `<details class="abstand"><summary>Vergangene Termine (${v.length})</summary><div class="abstand">${[...v].reverse().map(karte).join("")}</div></details>` : ""}
-  ${istAdmin() ? `<details class="karte abstand formular-klappe"><summary>Neuen Termin anlegen</summary><div class="abstand">${terminFormular(null)}</div></details>` : ""}`;
+  ${istTrainer() ? `<details class="karte abstand formular-klappe"><summary>Neuen Termin anlegen</summary><div class="abstand">${terminFormular(null)}</div></details>` : ""}`;
 }
 
 function terminFormular(t) {
@@ -1012,7 +1031,14 @@ function hinweiseKarte(nurStart = false) {
   return `<ul class="hinweis-liste">${(nurStart ? h.slice(0, 3) : h).map((x) => `<li>
       <div class="hinweis-text">${esc(x.text).replace(/\n/g, "<br>")}</div>
       <div class="leise klein">${x.von ? esc(x.von) + " · " : ""}${kurzDatum((x.erstellt || heute()).slice(0, 10))}${x.bis ? ` · gilt bis ${kurzDatum(x.bis)}` : ""}
-        ${istTrainer() && !nurStart ? ` · <button class="link-knopf" data-aktion="loeschen" data-col="hinweise" data-id="${x.id}" data-frage="Info löschen?">löschen</button>` : ""}</div>
+</div>
+      ${istTrainer() && !nurStart ? `<details class="bearbeiten"><summary>bearbeiten</summary>
+        <form data-form="hinweis-edit" data-id="${x.id}">
+          <div class="feld"><textarea name="text" required maxlength="600">${esc(x.text)}</textarea></div>
+          <div class="zeile"><div class="feld" style="flex-basis:160px"><label>Anzeigen bis</label><input type="date" name="bis" value="${esc(x.bis || "")}"></div>
+          <button class="knopf klein">Speichern</button>
+          <button type="button" class="link-knopf gefahr-text" data-aktion="loeschen" data-col="hinweise" data-id="${x.id}" data-frage="Info löschen?">löschen</button></div>
+        </form></details>` : ""}
     </li>`).join("")}</ul>${nurStart && h.length > 3 ? `<p class="klein"><a href="#/infos">Alle Infos ›</a></p>` : ""}`;
 }
 
@@ -1058,7 +1084,16 @@ function abfrageKarte(a) {
         <tfoot><tr><th>Summe</th>${spalten.map((_, i) => `<th>${summe(i)}</th>`).join("")}<th></th></tr></tfoot>
       </table></div>
       ${fehlt.length ? `<p class="klein abstand"><strong>Noch keine Antwort:</strong> ${esc(fehlt.join(", "))}</p>` : `<p class="gut klein abstand">Alle haben geantwortet.</p>`}
-      ${istTrainer() ? `<div class="ausrichten abstand">
+      ${istTrainer() ? `<details class="bearbeiten abstand"><summary>Abfrage bearbeiten</summary>
+        <form data-form="abfrage-edit" data-id="${a.id}">
+          <div class="feld"><label>Frage</label><input type="text" name="titel" required maxlength="120" value="${esc(a.titel)}"></div>
+          <div class="feld"><label>Erklärung</label><textarea name="text" maxlength="800">${esc(a.text || "")}</textarea></div>
+          <div class="feld"><label>Termine zum Ankreuzen, einer pro Zeile</label><textarea name="optionen" maxlength="600">${esc(a.optionen || "")}</textarea>
+            ${antworten.length && opt.length ? `<p class="leise klein">Es gibt schon Antworten. Termine bitte nur umbenennen oder unten ergänzen, nicht umsortieren oder löschen, sonst verrutschen die Kreuze.</p>` : ""}</div>
+          <div class="zeile"><div class="feld" style="flex-basis:160px"><label>Antworten bis</label><input type="date" name="frist" value="${esc(a.frist || "")}"></div>
+          <button class="knopf klein">Speichern</button></div>
+        </form></details>
+      <div class="ausrichten abstand">
         <button class="knopf zweit klein" data-aktion="abfrage-schliessen" data-id="${a.id}" data-wert="${a.geschlossen ? "nein" : "ja"}">${a.geschlossen ? "Wieder öffnen" : "Abfrage beenden"}</button>
         <button class="link-knopf gefahr-text" data-aktion="loeschen" data-col="abfragen" data-id="${a.id}" data-frage="Abfrage mit allen Antworten löschen?">löschen</button></div>` : ""}
     </details>`;
@@ -1338,6 +1373,7 @@ function seiteFahrten() {
       <summary><div class="summary-innen">${spielZeile(s)}<div class="summary-status">${status}</div></div></summary>
       <div class="fahrt-inhalt">
         ${hallenZeile(s)}
+        ${halleAdresse(s.halle) ? `<p class="halle-adresse">${esc(s.halle)}, ${esc(halleAdresse(s.halle))} ${routeLink(s.halle, "link-knopf")}</p>` : ""}
         ${zeitnehmerNoetig(s) ? `<ul class="aufgaben">${zeitnehmerZeile(s)}</ul>` : ""}
         ${fahrten ? `<ul class="liste">${fahrten}</ul>` : `<p class="leer">Noch bietet niemand Plätze an.</p>`}
         <details class="abstand"><summary>Ich fahre und habe Plätze frei</summary>
@@ -1563,6 +1599,12 @@ inhalt.addEventListener("submit", async (ev) => {
       case "hinweis":
         await api("POST", "/api/c/hinweise", { text: w.text, bis: w.bis, von: meinVorname() || (Z.rolle === "trainer" ? "Trainerteam" : "") });
         await neuLaden("Info veröffentlicht"); break;
+      case "hinweis-edit":
+        await api("PUT", "/api/c/hinweise/" + form.dataset.id, { text: w.text, bis: w.bis || "" });
+        await neuLaden("Info geändert"); break;
+      case "abfrage-edit":
+        await api("PUT", "/api/c/abfragen/" + form.dataset.id, { titel: w.titel, text: w.text, optionen: w.optionen, frist: w.frist || "" });
+        await neuLaden("Abfrage geändert"); break;
       case "abfrage-neu":
         await api("POST", "/api/c/abfragen", { titel: w.titel, text: w.text, optionen: w.optionen, frist: w.frist, von: meinVorname() });
         await neuLaden("Abfrage gestartet"); break;
@@ -1654,6 +1696,7 @@ inhalt.addEventListener("submit", async (ev) => {
           standdienstInfo: w.standdienstInfo,
           liga: w.liga,
           teamText: w.teamText,
+          hallen: zeilen(w.hallen).map((z) => { const [name, ...rest] = z.split("|").map((x) => (x || "").trim()); return { name, adresse: rest.join(", ") }; }).filter((h) => h.name),
           trainingszeiten: zeilen(w.trainingszeiten).map((z) => { const [tag, zeit, halle] = z.split("|").map((x) => (x || "").trim()); return { tag, zeit, halle }; }),
           cateringArtikel: zeilen(w.cateringArtikel).map((z) => { const [name, bedarf, hinweis, modus] = z.split("|").map((x) => (x || "").trim()); return { name, bedarf: Math.max(1, parseInt(bedarf, 10) || 1), hinweis: hinweis || "", immer: !/bedarf/i.test(modus || "") }; }),
           kassenKategorien: zeilen(w.kassenKategorien),
@@ -1806,6 +1849,12 @@ inhalt.addEventListener("click", async (ev) => {
       el.disabled = true;
       await api("POST", "/api/c/catering", { spielId: el.dataset.spiel, artikel: el.dataset.artikel, name, menge: "" });
       await neuLaden(`Danke, du bringst ${el.dataset.artikel} mit`);
+    } else if (a === "kalender-spiele") {
+      kalenderLaden(kommende(spieleSortiert()).map((sp) => ({
+        key: "spiel-" + sp.id, spiel: sp, link: "#/spiele",
+        titel: `Handball C-Jugend: ${sp.heim ? "OTV gegen " + sp.gegner : sp.gegner + " gegen OTV"}`,
+        text: `${sp.heim ? "Heimspiel" : "Auswärtsspiel"}${treffzeit(sp) ? `, Jungs um ${treffzeit(sp)} Uhr in der Halle` : ""}`,
+      })));
     } else if (a === "kalender") {
       kalenderLaden(el.dataset.alle ? meineTermine() : meineTermine().filter((t) => t.key === el.dataset.key));
     } else if (a === "kassen-details") {

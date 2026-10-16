@@ -19,9 +19,9 @@ Hosting über GitHub und Netlify (Gratis-Tarif), Daten in Netlify Blobs. Kein Fr
 | Trikots | Waschplan reihum nach Kader, Tausch und „erledigt“ durch alle Eltern |
 | Kasse | Eltern sehen zuerst nur Kassenstand und letzte Buchungen, Details auf Knopfdruck. Alle sehen Stand, Buchungen, Einnahmen nach Kanal, Ausgaben nach Zweck, CSV-Export, Ergebnis je Heimspiel. Buchen nur Kasse, inklusive „Heimspiel abrechnen“ mit fertigem WhatsApp-Text |
 | Galerie | Erst sichtbar, wenn die Kasse sie unter Verwaltung freigibt. Dann laden alle Fotos hoch (werden im Browser verkleinert, Standortdaten entfernt). Melden blendet ein Foto sofort aus, die Kasse gibt frei oder löscht |
-| Verwaltung | Nur Kasse: Kader, Trainer, Anfangsbestand, Mitbringliste, Vorrat, Wäsche, Zeitnehmer, Kategorien, Widget-Token. Dazu die Helfer-Übersicht (wer hat wie oft Standdienst, Mitbringen, Fahren, Zeitnehmer, Trikots übernommen), gezählt über den Sohn in Klammern hinter dem Namen |
+| Verwaltung | Nur Kasse: Hallen mit Adresse (daraus der Knopf „Route“), Trainingszeiten, Kader, Trainer, Anfangsbestand, Mitbringliste, Vorrat, Wäsche, Zeitnehmer, Kategorien, Widget-Token. Dazu die Helfer-Übersicht (wer hat wie oft Standdienst, Mitbringen, Fahren, Zeitnehmer, Trikots übernommen), gezählt über den Sohn in Klammern hinter dem Namen |
 
-Drei Passwörter: Das **Eltern-Passwort** erlaubt Lesen und Eintragen. Das **Trainer-Passwort** kann alles wie das Eltern-Passwort und zusätzlich Infos und Abfragen anlegen. Das **Kassen-Passwort** (nur Tomski und Peggy) erlaubt zusätzlich Buchungen und Verwaltung.
+Drei Passwörter: Das **Eltern-Passwort** erlaubt Lesen und Eintragen. Das **Trainer-Passwort** kann alles wie das Eltern-Passwort und zusätzlich Infos, Termine und Abfragen anlegen und bearbeiten (Zahlungen buchen bleibt bei der Kasse). Das **Kassen-Passwort** (nur Tomski und Peggy) erlaubt zusätzlich Buchungen und Verwaltung.
 
 ## Einrichtung
 
