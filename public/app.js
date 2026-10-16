@@ -257,7 +257,14 @@ function aufgabe({ status = "offen", titel, stand = "", detail = "", knopf = "" 
     <div class="aufgabe-text"><div><strong>${titel}</strong>${stand ? ` <span class="aufgabe-stand">${stand}</span>` : ""}</div>${detail ? `<div class="aufgabe-detail">${detail}</div>` : ""}</div>
     ${knopf ? `<div class="aufgabe-knopf">${knopf}</div>` : ""}</li>`;
 }
-const wer = (liste) => liste.map((x) => `${esc(x.name.split(" (")[0])}${x.eigen ? " (du)" : ""}`).join(", ");
+// Name mit Sohn anzeigen. Fehlt der Sohn im Eintrag, hilft die Zuordnung aus der Verwaltung.
+function anzeigeName(name) {
+  const n = (name || "").trim();
+  if (/\([^()]+\)\s*$/.test(n)) return n;
+  const f = (Z.einstellungen.namenZuordnung || {})[n.toLowerCase()];
+  return f && f !== "-" && f !== "Trainer" ? `${n} (${f})` : n;
+}
+const wer = (liste) => liste.map((x) => `${esc(anzeigeName(x.name))}${x.eigen ? " · du" : ""}`).join(", ");
 const offenZaehler = (html) => (html.match(/st-(offen|dringend)/g) || []).length;
 function statusPill(n) {
   return n ? `<span class="pill offen">${n} ${n === 1 ? "Aufgabe" : "Aufgaben"} offen</span>` : `<span class="pill ok">✓ Alles besetzt</span>`;
@@ -624,7 +631,7 @@ function seiteCatering() {
     const reserve = alle.filter((x) => x.reserve);
     const frei = Math.max(0, st.plaetze - dienst.length);
     const reserveFrei = Math.max(0, (e.reservePlaetze ?? 1) - reserve.length);
-    const eintrag = (d) => `<li><span><span class="haken">✓</span><strong>${esc(d.name)}</strong>${d.hinweis ? ` <span class="leise">· ${esc(d.hinweis)}</span>` : ""}</span>
+    const eintrag = (d) => `<li><span><span class="haken">✓</span><strong>${esc(anzeigeName(d.name))}</strong>${d.hinweis ? ` <span class="leise">· ${esc(d.hinweis)}</span>` : ""}</span>
         ${darfLoeschen(d) ? `<button class="link-knopf" data-aktion="loeschen" data-col="standdienst" data-id="${d.id}" data-frage="Eintrag entfernen?">austragen</button>` : ""}</li>`;
     const plaetze = [
       ...dienst.map(eintrag),
@@ -646,7 +653,7 @@ function seiteCatering() {
           <button class="${voll ? "link-knopf" : "knopf klein zweit"}" data-aktion="mitbringen-oeffnen" data-key="${key}">${voll ? "+ zusätzlich" : "Ich bringe mit"}</button>
         </div>
         ${istAdmin() && !a.vorrat ? `<div class="artikel-admin"><span class="menge-stepper" title="Anzahl für dieses Spiel"><button class="mini" data-aktion="menge-aendern" data-spiel="${s.id}" data-artikel="${esc(a.name)}" data-delta="-1" ${a.bedarf <= 1 ? "disabled" : ""} aria-label="weniger">−</button><span>${a.bedarf}×</span><button class="mini" data-aktion="menge-aendern" data-spiel="${s.id}" data-artikel="${esc(a.name)}" data-delta="1" aria-label="mehr">+</button></span>${a.bedarf !== a.standard ? `<span class="leise klein">sonst ${a.standard}×</span>` : ""}<button class="link-knopf klein" data-aktion="artikel-umschalten" data-spiel="${s.id}" data-artikel="${esc(a.name)}">diesmal nicht nötig</button></div>` : ""}
-        ${zusagen.length ? `<div>${zusagen.map((c) => `<span class="chip">${esc(c.name)}${c.menge ? " · " + esc(c.menge) : ""}${darfLoeschen(c) ? `<button class="x" title="entfernen" data-aktion="loeschen" data-col="catering" data-id="${c.id}" data-frage="Zusage entfernen?">×</button>` : `<span style="width:6px"></span>`}</span>`).join("")}</div>` : ""}
+        ${zusagen.length ? `<div>${zusagen.map((c) => `<span class="chip">${esc(anzeigeName(c.name))}${c.menge ? " · " + esc(c.menge) : ""}${darfLoeschen(c) ? `<button class="x" title="entfernen" data-aktion="loeschen" data-col="catering" data-id="${c.id}" data-frage="Zusage entfernen?">×</button>` : `<span style="width:6px"></span>`}</span>`).join("")}</div>` : ""}
         <form class="zeile mitbringen" data-form="catering" data-spiel="${s.id}" data-key="${key}" hidden>
           <input type="hidden" name="artikel" value="${esc(a.name)}">
           <div class="feld"><input type="text" name="menge" maxlength="60" placeholder="Menge, z. B. 1 Blech (optional)" aria-label="Menge"></div>
@@ -1222,8 +1229,8 @@ function teilen(text) {
 function cateringText(s) {
   const e = Z.einstellungen;
   const alle = Z.standdienst.filter((x) => x.spielId === s.id).sort((a, b) => a.erstellt.localeCompare(b.erstellt));
-  const dienst = alle.filter((x) => !x.reserve).map((x) => x.name);
-  const reserve = alle.filter((x) => x.reserve).map((x) => x.name);
+  const dienst = alle.filter((x) => !x.reserve).map((x) => anzeigeName(x.name));
+  const reserve = alle.filter((x) => x.reserve).map((x) => anzeigeName(x.name));
   const frei = Math.max(0, e.standdienstPlaetze - dienst.length);
   const z = [`🤾 Heimspiel ${wtDatum(s)}${s.zeit ? " " + s.zeit + " Uhr" : ""} gegen ${s.gegner}`];
   if (s.halle) z.push(`📍 ${s.halle}`);
@@ -1240,7 +1247,7 @@ function cateringText(s) {
   z.push("", "🍰 Mitbringliste:");
   for (const a of cateringStatus(s).artikel) {
     const zus = Z.catering.filter((c) => c.spielId === s.id && c.artikel === a.name);
-    const wer = zus.map((c) => (c.menge ? `${c.menge} von ` : "") + c.name).join(", ");
+    const wer = zus.map((c) => (c.menge ? `${c.menge} von ` : "") + anzeigeName(c.name)).join(", ");
     const fehlt = a.bedarf - zus.length;
     const name = a.hinweis ? `${a.name} (je ${a.hinweis})` : a.name;
     z.push(fehlt > 0 ? `❗ ${name}: ${wer ? wer + ", " : ""}noch ${fehlt} gesucht` : `✅ ${a.name}: ${wer}`);
