@@ -8,7 +8,7 @@ Hosting über GitHub und Netlify (Gratis-Tarif), Daten in Netlify Blobs. Kein Fr
 | Bereich | Wer darf was |
 |---|---|
 | Start | Die zwei nächsten Spiele: Heimspiel mit „Ich übernehme Standdienst“ und „Ich bringe etwas mit“, Auswärtsspiel mit Fahrern, freien Plätzen und „Kind fährt mit“. Darunter „Meine Termine“ mit Kalender-Export. Auf dem Handy ein Hinweis zur App-Installation |
-| Infos und Abfragen | Das Trainerteam schreibt kurze Infos (z. B. Trainingsausfall), die auf der Startseite stehen, bis sie ablaufen. Abfragen wie „Wer ist in den Herbstferien beim Training?“: Eltern kreuzen für ihren Sohn an, Trainer und Kasse sehen die Übersicht und können Antworten aus WhatsApp direkt in der Tabelle antippen |
+| Infos & Termine | Das Trainerteam schreibt kurze Infos (z. B. Trainingsausfall), die auf der Startseite stehen, bis sie ablaufen. Abfragen wie „Wer ist in den Herbstferien beim Training?“: Eltern kreuzen für ihren Sohn an, Trainer und Kasse sehen die Übersicht und können Antworten aus WhatsApp direkt in der Tabelle antippen. Termine (z. B. Weihnachtsfeier) mit Rückmeldefrist stehen auf derselben Seite. Der WhatsApp-Text pro Spiel (Startseite, für Trainer und Kasse) enthält aktuelle Trainer-Infos und offene Rückmeldungen |
 | Mannschaft | Text, Liga, Kader (nur Vornamen), Trainer, Trainingszeiten. Ändern nur Kasse |
 | Spiele | handball.net-Widget (Spielplan, Tabelle) und eigene Terminliste. Termine pflegt die Kasse |
 | Heimspiel-Catering | Artikel mit „bei Bedarf“ (z. B. Kaffee) stehen nur auf der Liste, wenn die Kasse sie beim Spiel zuschaltet. Pro Heimspiel Standdienst (Plätze begrenzt) und Mitbringliste. Alle Eltern tragen sich ein und entfernen nur ihre eigenen Einträge. 2 feste Plätze plus Reserve. Knopf „Text für WhatsApp“ |

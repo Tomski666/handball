@@ -87,7 +87,7 @@ const COLLECTIONS = {
   termine: {
     schreiben: "kasse",
     felder: { titel: { ...S(80), pflicht: true }, datum: { typ: "datum", pflicht: true }, zeit: { typ: "zeit" }, ort: S(120),
-      beschreibung: S(2000), kostenProPerson: { typ: "zahl" }, frage: S(160) },
+      beschreibung: S(2000), kostenProPerson: { typ: "zahl" }, frage: S(160), frist: { typ: "datum" } },
   },
   antworten: {
     // Schlüssel = Termin + Familie. Eltern melden sich zurück, die Kasse setzt "bezahlt".
