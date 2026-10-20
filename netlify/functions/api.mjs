@@ -552,6 +552,38 @@ export default async (request) => {
       return json({ summen: (await strichSummen(store, [spielId]))[spielId] || {} });
     }
 
+    // Namen bereinigen (nur Kasse, auf Knopfdruck): nur Vorname, Sohn aus Klammer oder Zuordnung fest eintragen
+    if (teile[0] === "namen-bereinigen" && methode === "POST") {
+      if (rolle !== "kasse") return fehler("Nur für die Kassenführung", 403);
+      const e = await einstellungen(store);
+      const zuordnung = { ...(e.namenZuordnung || {}) };
+      const benutzt = new Set();
+      const sauber = (name) => {
+        const n = String(name || "").trim();
+        if (!n) return n;
+        const klammer = /\(([^()]+)\)\s*$/.exec(n);
+        const vorname = n.replace(/\s*\([^()]+\)\s*$/, "").split(/\s+/)[0];
+        const z = zuordnung[n.toLowerCase()];
+        let sohn = klammer ? klammer[1].trim() : "";
+        if (z && z !== "-") { sohn = z; benutzt.add(n.toLowerCase()); }
+        return sohn ? `${vorname} (${sohn})` : vorname;
+      };
+      const felder = { standdienst: ["name"], catering: ["name"], zeitnehmer: ["name"], waschdienst: ["name"], fahrten: ["fahrer"], mitfahrer: ["eingetragenVon"], vorrat: ["von"], antworten: ["von"], abfrageAntworten: ["von"], hinweise: ["von"], abfragen: ["von"] };
+      let geaendert = 0;
+      for (const [col, fs] of Object.entries(felder)) {
+        for (const x of await liste(store, col)) {
+          const neu = { ...x };
+          let anders = false;
+          for (const f of fs) { if (x[f] && sauber(x[f]) !== x[f]) { neu[f] = sauber(x[f]); anders = true; } }
+          if (anders) { await store.setJSON(`${col}/${x.id}`, neu); geaendert++; }
+        }
+      }
+      // verwendete Zuordnungen werden nicht mehr gebraucht ("nicht mitzählen" bleibt erhalten)
+      for (const k of benutzt) if (zuordnung[k] !== "-") delete zuordnung[k];
+      await store.setJSON("einstellungen", { ...(await store.get("einstellungen", { type: "json" })), namenZuordnung: zuordnung });
+      return json({ geaendert });
+    }
+
     // Gesamtzustand für die Seite
     if (teile[0] === "zustand" && methode === "GET") {
       const e = await einstellungen(store);

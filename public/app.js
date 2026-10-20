@@ -1074,12 +1074,14 @@ function helferUebersicht() {
       <thead><tr><th>Familie</th><th>Stand&shy;dienst</th><th>Mit&shy;gebracht</th><th>Gefahren</th><th>Zeit&shy;nehmer</th><th>Wäsche</th><th>Trikots</th><th>Gesamt</th></tr></thead>
       <tbody>${liste.map(({ n, z, s }) => `<tr class="${s === 0 ? "null" : ""}"><td>${esc(n)}</td><td>${z.standdienst}</td><td>${z.mitgebracht}</td><td>${z.gefahren}</td><td>${z.zeitnehmer}</td><td>${z.waesche}</td><td>${z.trikots}</td><td><strong>${s}</strong></td></tr>`).join("")}</tbody>
     </table></div>
+    <div class="hinweis info abstand"><strong>Namen bereinigen:</strong> Trägt in allen Einträgen nur den Vornamen ein und schreibt den Sohn fest dazu, z. B. „Peggy Evertz“ wird „Peggy (Piet)“. Danach sind die Zuordnungen unten nicht mehr nötig.
+      <div class="abstand" style="margin-top:8px"><button class="knopf klein" data-aktion="namen-bereinigen">Namen jetzt bereinigen</button></div></div>
     ${Object.keys(ohne).length ? `<h3 class="abstand">Ohne Zuordnung</h3>
       <p class="leise klein">Diese Einträge haben keinen Sohn in Klammern. Einmal zuordnen, dann zählen auch alle künftigen Einträge mit diesem Namen. Mehrere Elternteile können zum selben Sohn gehören.</p>
       <ul class="liste zuordnung-liste">${Object.entries(ohne).sort((a, b) => a[0].localeCompare(b[0], "de")).map(([n, c]) => `<li><span><strong>${esc(n)}</strong> <span class="leise">(${c}×)</span></span>
         <select data-aktion="name-zuordnen" data-name="${esc(n)}"><option value="">Sohn wählen …</option>${namen.map((k) => `<option value="${esc(k)}">${esc(k)}</option>`).join("")}<option value="-">nicht mitzählen (z. B. Trainer)</option></select></li>`).join("")}</ul>` : ""}
     ${Object.keys(zuordnung).length ? `<details class="abstand"><summary>Zugeordnete Namen (${Object.keys(zuordnung).length})</summary>
-      <ul class="liste zuordnung-liste">${Object.entries(zuordnung).sort((a, b) => a[0].localeCompare(b[0], "de")).map(([n, f]) => `<li><span>${esc(n.replace(/(^|[\s(-])\S/g, (c) => c.toUpperCase()))}</span>
+      <ul class="liste zuordnung-liste">${Object.entries(zuordnung).sort((a, b) => a[0].localeCompare(b[0], "de")).map(([n, f]) => `<li><span>${esc(anzeigeName(n.replace(/(^|[\s(-])\S/g, (c) => c.toUpperCase())).replace(/\s*\([^()]+\)$/, ""))}</span>
         <select data-aktion="name-zuordnen" data-name="${esc(n)}">${namen.map((k) => `<option value="${esc(k)}" ${k === f ? "selected" : ""}>${esc(k)}</option>`).join("")}<option value="-" ${f === "-" ? "selected" : ""}>nicht mitzählen</option><option value="__loesen">Zuordnung lösen</option></select></li>`).join("")}</ul></details>` : ""}
     <details class="abstand"><summary>Einen Namen von Hand zuordnen</summary>
       <p class="leise klein">Für Einträge mit falschem oder fehlendem Sohn, z. B. „René“ oder „Anja (Max)“ statt „Anja (Mats)“. Gilt für alle Einträge mit genau diesem Namen.</p>
@@ -1373,17 +1375,28 @@ function abrechnungsFormular() {
 
 function abrechnungsText(spielId) {
   const s = Z.spiele.find((x) => x.id === spielId);
-  const b = spielBilanz(spielId);
+  const buch = Z.kasse.filter((x) => x.spielId === spielId);
+  const ein = buch.filter((x) => x.art === "einnahme").reduce((n, x) => n + x.betrag, 0);
+  const otv = buch.filter((x) => x.art === "ausgabe" && x.kategorie === "Getränke OTV");
+  const sonst = buch.filter((x) => x.art === "ausgabe" && x.kategorie !== "Getränke OTV");
+  const gz = {};
+  for (const b of otv) for (const [k, v] of Object.entries(Object.fromEntries((b.getraenke || "").split(";").map((t) => t.split("=")).filter((t) => t.length === 2)))) gz[k] = (gz[k] || 0) + (parseInt(v, 10) || 0);
+  const getr = getraenkeRechnung(gz);
+  const otvSumme = otv.reduce((n, x) => n + x.betrag, 0);
+  const aus = otvSumme + sonst.reduce((n, x) => n + x.betrag, 0);
   const z = [`💰 Abrechnung Heimspiel gegen ${s.gegner} (${wtDatum(s)})`, ""];
-  z.push(`Einnahmen: ${euro(b.ein)}${b.einNach.length > 1 ? " (" + b.einNach.map(([k, v]) => `${k} ${euro(v)}`).join(", ") + ")" : ""}`);
-  if (b.aus) z.push(`Ausgaben: ${euro(b.aus)} (${b.ausNach.map(([k, v]) => `${k} ${euro(v)}`).join(", ")})`);
-  z.push(`Ergebnis: ${b.ein - b.aus >= 0 ? "+" : "−"}${euro(Math.abs(b.ein - b.aus))}`);
-  z.push(`Kassenstand jetzt: ${euro(kassenSummen().saldo)}`);
-  const helfer = Z.standdienst.filter((x) => x.spielId === spielId).map((x) => x.name);
-  const backen = Z.catering.filter((x) => x.spielId === spielId).map((x) => x.name);
-  if (helfer.length || backen.length) z.push("");
-  if (helfer.length) z.push(`Danke an den Standdienst: ${namenListe(helfer)} 🙌`);
-  if (backen.length) z.push(`Danke fürs Mitbringen: ${namenListe(backen)} 🍰`);
+  z.push(`Einnahmen (Kuchen, Kaffee und Getränke): ${euro(ein)}`);
+  if (getr.umsatz) z.push(`davon Getränke: ${euro(getr.umsatz)}`);
+  if (aus) {
+    z.push("", "Abzüglich:");
+    if (otvSumme) z.push(`• Anteil Getränke an den OTV (${Z.einstellungen.otvAnteilProzent ?? 50} %): ${euro(otvSumme)}`);
+    const nachKat = new Map();
+    for (const x of sonst) nachKat.set(x.kategorie || "Sonstiges", (nachKat.get(x.kategorie || "Sonstiges") || 0) + x.betrag);
+    for (const [k, v] of nachKat) z.push(`• ${k}: ${euro(v)}`);
+  }
+  z.push("", `Ergebnis für die Mannschaftskasse: ${ein - aus >= 0 ? "+" : "−"}${euro(Math.abs(ein - aus))}`);
+  z.push(`Kassenstand aktuell: ${euro(kassenSummen().saldo)}`);
+  z.push("", "Vielen Dank an alle, die beim Standdienst, mit Kuchen und beim Spiel geholfen haben! 🙌");
   z.push("", `Details: ${location.origin}/#/kasse`);
   return z.join("\n");
 }
@@ -1986,6 +1999,10 @@ inhalt.addEventListener("click", async (ev) => {
       offeneSpiele.add(el.dataset.id);
       for (const id of ["spiel-", "mehr-", "anbieten-"]) { const d = document.getElementById(id + el.dataset.id); if (d) d.open = true; }
       document.getElementById("anbieten-" + el.dataset.id)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    } else if (a === "namen-bereinigen") {
+      if (!confirm("Alle Einträge auf Vorname (Sohn) umstellen? Nachnamen werden dabei dauerhaft entfernt.")) return;
+      const r = await api("POST", "/api/namen-bereinigen");
+      await neuLaden(r.geaendert ? `${r.geaendert} Einträge bereinigt` : "Alles war schon sauber");
     } else if (a === "strich") {
       el.disabled = true;
       const r = await api("PUT", "/api/strich/" + el.dataset.spiel, { getraenk: el.dataset.getraenk, delta: Number(el.dataset.delta) });
