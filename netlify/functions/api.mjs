@@ -99,7 +99,7 @@ const COLLECTIONS = {
     schreiben: "kasse",
     felder: { datum: { typ: "datum", pflicht: true }, art: { typ: "wahl", werte: ["einnahme", "ausgabe"], pflicht: true },
       betrag: { typ: "cent", pflicht: true }, zweck: { ...S(120), pflicht: true }, kategorie: S(40),
-      kanal: S(30), spielId: S(40), beleg: S(120) },
+      kanal: S(30), spielId: S(40), beleg: S(120), offen: { typ: "bool" }, getraenke: S(600) },
   },
 };
 
@@ -116,6 +116,12 @@ const STANDARD_EINSTELLUNGEN = {
   standdienstPlaetze: 2,
   reservePlaetze: 1,
   galerieAktiv: false,
+  // Getränke vom OTV: Preis in Cent, Anteil, der an den OTV zurückgeht
+  getraenke: [
+    { name: "Fassbrause rot", preis: 250 }, { name: "Fassbrause gelb", preis: 250 }, { name: "Cola", preis: 250 },
+    { name: "Fanta", preis: 250 }, { name: "Apfelschorle", preis: 250 }, { name: "Wasser still", preis: 150 }, { name: "Wasser mit Sprudel", preis: 150 },
+  ],
+  otvAnteilProzent: 50,
   hallen: [], // { name, adresse } für Route-Links bei Spielen und Training
   namenZuordnung: {}, // Helfer-Übersicht: Name ohne Sohn in Klammern -> Vorname des Sohns oder "-" (nicht zählen)
   cateringArtikel: [
@@ -217,6 +223,28 @@ const STARTDATEN = {
     { vorname: "Titus", nummer: "", reihenfolge: 19 },
   ],
 };
+
+// ---------- Strichliste Getränke ----------
+// Jedes Gerät des Standdienstes zählt in einem eigenen Eintrag (keine Überschneidungen), angezeigt wird die Summe.
+const strichSchluessel = (spielId, besitzer) => `strichliste/${spielId}__${String(besitzer).replace(/[^\w-]/g, "").slice(0, 64)}`;
+const zaehlerLesen = (t) => Object.fromEntries(String(t || "").split(";").map((x) => x.split("=")).filter((x) => x.length === 2 && x[0]).map(([k, v]) => [k, Math.max(0, parseInt(v, 10) || 0)]));
+const zaehlerText = (o) => Object.entries(o).filter(([, v]) => v > 0).map(([k, v]) => `${k.replace(/[;=]/g, " ")}=${v}`).join(";");
+async function strichSummen(store, spielIds) {
+  const summen = {};
+  const alle = await liste(store, "strichliste");
+  for (const x of alle) {
+    if (spielIds && !spielIds.includes(x.spielId)) continue;
+    const z = zaehlerLesen(x.zaehler);
+    summen[x.spielId] = summen[x.spielId] || {};
+    for (const [k, v] of Object.entries(z)) summen[x.spielId][k] = (summen[x.spielId][k] || 0) + v;
+  }
+  return summen;
+}
+async function strichBerechtigt(store, rolle, besitzer) {
+  if (rolle === "kasse") return null; // alle
+  if (!besitzer) return [];
+  return (await liste(store, "standdienst")).filter((x) => x.besitzer && x.besitzer === besitzer).map((x) => x.spielId);
+}
 
 // ---------- Kalender-Abo ----------
 function gleich(a, b) {
@@ -505,10 +533,32 @@ export default async (request) => {
       return json({ pfad: `/api/kalender/${token}.ics` });
     }
 
+    // Strichliste: zählen (nur Standdienst dieses Spiels auf diesem Gerät oder Kasse)
+    if (teile[0] === "strich" && teile[1] && methode === "PUT") {
+      const spielId = teile[1];
+      if (!/^[\w-]{1,60}$/.test(spielId)) return fehler("Ungültiges Spiel");
+      const erlaubt = await strichBerechtigt(store, rolle, besitzer);
+      if (erlaubt && !erlaubt.includes(spielId)) return fehler("Die Strichliste ist nur für den Standdienst dieses Spiels", 403);
+      if (!besitzer) return fehler("Gerät nicht erkannt");
+      const { getraenk, delta } = await request.json().catch(() => ({}));
+      const name = String(getraenk || "").trim().slice(0, 40);
+      const d = Math.max(-5, Math.min(5, Number.parseInt(delta, 10) || 0));
+      if (!name || !d) return fehler("Ungültige Eingabe");
+      const key = strichSchluessel(spielId, besitzer);
+      const alt = (await store.get(key, { type: "json" })) || { id: key.slice("strichliste/".length), spielId, zaehler: "", erstellt: new Date().toISOString() };
+      const z = zaehlerLesen(alt.zaehler);
+      z[name] = Math.max(0, (z[name] || 0) + d);
+      await store.setJSON(key, { ...alt, zaehler: zaehlerText(z), geaendert: new Date().toISOString() });
+      return json({ summen: (await strichSummen(store, [spielId]))[spielId] || {} });
+    }
+
     // Gesamtzustand für die Seite
     if (teile[0] === "zustand" && methode === "GET") {
       const e = await einstellungen(store);
       const zustand = { rolle, einstellungen: e };
+      const berechtigt = await strichBerechtigt(store, rolle, besitzer);
+      zustand.strichBerechtigt = berechtigt === null ? "alle" : berechtigt;
+      zustand.strichSummen = berechtigt === null || berechtigt.length ? await strichSummen(store, berechtigt) : {};
       await Promise.all(Object.keys(COLLECTIONS).map(async (col) => {
         zustand[col] = (await liste(store, col)).map((x) => oeffentlich(x, besitzer));
       }));
@@ -533,6 +583,9 @@ export default async (request) => {
       zusammen.namenZuordnung = Object.fromEntries(Object.entries(zo).filter(([k, v]) => typeof v === "string" && v && k.length <= 80).slice(0, 300).map(([k, v]) => [k.trim().toLowerCase(), v.slice(0, 40)]));
       zusammen.hallen = (Array.isArray(zusammen.hallen) ? zusammen.hallen : []).filter((h) => h && typeof h.name === "string" && h.name.trim())
         .slice(0, 40).map((h) => ({ name: String(h.name).trim().slice(0, 80), adresse: String(h.adresse || "").trim().slice(0, 160) }));
+      zusammen.getraenke = (Array.isArray(zusammen.getraenke) ? zusammen.getraenke : []).filter((g) => g && String(g.name || "").trim())
+        .slice(0, 30).map((g) => ({ name: String(g.name).trim().slice(0, 40), preis: Math.max(0, Math.round(Number(g.preis)) || 0) }));
+      zusammen.otvAnteilProzent = Math.min(100, Math.max(0, Number.parseInt(zusammen.otvAnteilProzent, 10) || 0));
       zusammen.reservePlaetze = Math.min(5, Math.max(0, Number.parseInt(zusammen.reservePlaetze, 10) || 0));
       await store.setJSON("einstellungen", zusammen);
       return json(zusammen);

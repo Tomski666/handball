@@ -589,3 +589,19 @@ fieldset.einst-gruppe legend { font-weight: 700; padding: 0 6px; color: var(--bl
 .karte.flach { box-shadow: none; border: 1px solid var(--grau-linie); }
 .speichern-leiste { position: sticky; bottom: 76px; background: var(--weiss); padding: 10px 0; }
 @media (min-width: 1101px) { .speichern-leiste { bottom: 0; } }
+
+/* Strichliste Getränke */
+details.strichliste { margin-top: 8px; border: 2px solid var(--blau); border-radius: 12px; padding: 10px 12px; background: var(--blau-hell); }
+details.strichliste > summary { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 700; color: var(--blau-dunkel); }
+.strich-liste { list-style: none; margin: 8px 0 0; padding: 0; }
+.strich-liste li { display: grid; grid-template-columns: minmax(0, 1fr) 40px 44px 64px; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid rgba(6, 122, 192, .15); }
+.strich-liste li:first-child { border-top: 0; }
+.strich-name { display: flex; flex-direction: column; min-width: 0; }
+.strich-zahl { text-align: center; font-size: 22px; font-weight: 800; }
+.strich-plus, .strich-minus { height: 48px; border-radius: 10px; border: 0; font-size: 26px; font-weight: 700; cursor: pointer; touch-action: manipulation; }
+.strich-plus { background: var(--blau); color: #fff; }
+.strich-minus { background: #fff; color: var(--text-leise); border: 1px solid var(--grau-linie); height: 40px; font-size: 22px; }
+.strich-minus:disabled { opacity: .3; }
+.strich-summe { margin: 10px 0 0; font-size: 16px; }
+.getraenke-ergebnis { margin: 6px 0 0; font-size: 15px; }
+.otv-offen .liste > li { align-items: flex-start; }

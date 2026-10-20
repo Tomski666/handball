@@ -72,6 +72,10 @@ iPhone: Seite in Safari öffnen, Teilen, „Zum Home-Bildschirm“. Android: Chr
 
 Startseite = alles zum nächsten Heim- und Auswärtsspiel. Seite **Spiele** = alle Spiele mit derselben Karte (Standdienst, Mitbringen, Fahrten, Zeitnehmer, Wäsche, Trikots), Filter Alle/Heim/Auswärts, darunter Vorrat, Kalender-Abo und handball.net. Die früheren Seiten Catering und Fahrten leiten auf die Spiele-Seite mit Filter um. Navigation unten: Start, Spiele, Infos, Kasse, Mehr. Ab 1.5: „Deine Aufgaben“ oben auf der Startseite, Verwaltung in aufklappbaren Bereichen, beim Austragen aus dem Standdienst rückt die erste Reserve automatisch nach.
 
+## Getränke und Strichliste (ab 1.6)
+
+Der eingetragene Standdienst (auch Reserve) sieht am Spieltag und am Tag danach in der Heimspiel-Karte eine Strichliste der Getränke und zählt per Tipp. Mehrere Handys zählen zusammen, andere Eltern sehen die Liste nicht (auch nicht über die Schnittstelle). In der Kasse unter „Heimspiel abrechnen“ werden die Mengen vorausgefüllt; der OTV-Anteil (Standard 50 % des Getränkeumsatzes) wird als offene Ausgabe „Getränke OTV“ gebucht und im Kassenstand sofort abgezogen. „An den OTV zu zahlen“ sammelt die offenen Posten, die Kasse markiert sie nach der monatlichen Zahlung als bezahlt. Getränke und Preise pflegt die Kasse in der Verwaltung.
+
 ## Bedienung für Eltern
 
 Beim ersten Besuch fragt die Seite einmal nach Vorname und Kind und zeigt einen Tipp, wie man sie als App ablegt. Auf dem Handy liegt die Navigation unten (Start, Catering, Fahrten, Spiele, Mehr). Unter „Mehr“ liegen Kasse, Trikots, Mannschaft und Galerie. Name und Kind lassen sich über den Namen oben rechts oder „Mehr“ ändern.

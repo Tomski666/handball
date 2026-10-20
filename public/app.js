@@ -285,6 +285,39 @@ function uebernaechstesHinweis(heim, schonGezeigt = []) {
   return `<p class="danach"><a href="#/catering" data-aktion="springen-catering" data-id="${naechste.id}">Am ${datum(naechste.datum).toLocaleDateString("de-DE", { day: "numeric", month: "numeric" })} gegen ${esc(naechste.gegner)} fehlen auch noch ${esc(teile.join(", "))} ›</a></p>`;
 }
 
+// ---------- Strichliste Getränke ----------
+const getraenkeListe = () => Z.einstellungen.getraenke || [];
+const otvAnteil = () => (Z.einstellungen.otvAnteilProzent ?? 50) / 100;
+const darfStrich = (s) => s && s.heim && (Z.strichBerechtigt === "alle" || (Z.strichBerechtigt || []).includes(s.id));
+// Standdienst sieht die Strichliste am Spieltag und am Tag danach, die Kasse ab dem Spieltag
+function strichSichtbar(s) {
+  if (!darfStrich(s)) return false;
+  const tage = (datum(heute()) - datum(s.datum)) / 864e5;
+  return Z.strichBerechtigt === "alle" ? tage >= 0 : tage >= 0 && tage <= 1;
+}
+const strichVon = (s) => (Z.strichSummen || {})[s.id] || {};
+function getraenkeRechnung(zaehler) {
+  let stueck = 0, umsatz = 0;
+  for (const g of getraenkeListe()) { const n = zaehler[g.name] || 0; stueck += n; umsatz += n * g.preis; }
+  for (const [k, n] of Object.entries(zaehler)) if (!getraenkeListe().some((g) => g.name === k)) stueck += n; // Getränke ohne Preis zählen mit
+  return { stueck, umsatz, otv: Math.round(umsatz * otvAnteil()) };
+}
+function strichKarte(s, offen = false) {
+  const z = strichVon(s);
+  const r = getraenkeRechnung(z);
+  return `<details class="strichliste" id="strich-${s.id}" ${offen ? "open" : ""}>
+    <summary><span>Strichliste Getränke</span><span class="pill neutral">${r.stueck} verkauft · ${euro(r.umsatz)}</span></summary>
+    <p class="leise klein">Nur für den Standdienst sichtbar. Pro verkauftem Getränk einmal auf + tippen. Mehrere Handys zählen zusammen.</p>
+    <ul class="strich-liste">${getraenkeListe().map((g) => `<li>
+      <div class="strich-name"><strong>${esc(g.name)}</strong><span class="leise klein">${euro(g.preis)}</span></div>
+      <button class="strich-minus" data-aktion="strich" data-spiel="${s.id}" data-getraenk="${esc(g.name)}" data-delta="-1" ${(z[g.name] || 0) ? "" : "disabled"} aria-label="${esc(g.name)} eins weniger">−</button>
+      <span class="strich-zahl">${z[g.name] || 0}</span>
+      <button class="strich-plus" data-aktion="strich" data-spiel="${s.id}" data-getraenk="${esc(g.name)}" data-delta="1" aria-label="${esc(g.name)} eins mehr">+</button>
+    </li>`).join("")}</ul>
+    <p class="strich-summe"><strong>${r.stueck} Getränke · ${euro(r.umsatz)}</strong>${istAdmin() ? ` <span class="leise">· davon an den OTV: ${euro(r.otv)}</span>` : ""}</p>
+  </details>`;
+}
+
 // ---------- Eine Spielkarte für Startseite und Spiele-Seite ----------
 function heimAufgaben(s) {
   const st = cateringStatus(s);
@@ -360,6 +393,7 @@ function spielKarte(s, { start = false, schonGezeigt = [] } = {}) {
     <div class="spielkarte-inhalt">
       <ul class="aufgaben">${zeilen.map(aufgabe).join("")}</ul>
       ${auswahl}
+      ${strichSichtbar(s) ? strichKarte(s, start && s.datum === heute()) : ""}
       <details class="mehr-details" id="mehr-${s.id}"><summary>${s.heim ? "Standdienst, Reserve und Mitbringliste im Detail" : "Fahrten im Detail: mitfahren, Plätze anbieten"}</summary>
         <div class="abstand">${s.heim ? cateringDetails(s) : fahrtenDetails(s)}</div></details>
       ${istTrainer() || istAdmin() ? `<div class="spielkarte-fuss">
@@ -726,7 +760,7 @@ function kasseEinfach() {
   <section class="karte abstand">
     <h2>Letzte Buchungen</h2>
     ${letzte.length ? `<ul class="liste">${letzte.map((b) => `<li>
-      <div><strong>${esc(b.zweck)}</strong><div class="leise klein">${datumKurz(b.datum)} · ${esc(b.kanal)}</div></div>
+      <div><strong>${esc(b.zweck)}</strong><div class="leise klein">${datumKurz(b.datum)}${b.offen ? " · noch an den OTV zu zahlen" : b.kanal ? " · " + esc(b.kanal) : ""}</div></div>
       <strong class="${b.art === "einnahme" ? "plus" : "minus"}" style="white-space:nowrap">${b.art === "einnahme" ? "+" : "−"} ${euro(b.betrag)}</strong></li>`).join("")}</ul>`
       : `<p class="leer">Noch keine Buchungen.</p>`}
     <button class="knopf zweit abstand" data-aktion="kassen-details">Alle Details anzeigen</button>
@@ -767,6 +801,7 @@ function seiteKasse() {
     <section class="karte"><h2>Ausgaben nach Zweck</h2>${balken(gruppe("ausgabe", "kategorie"), aus, "var(--rot)")}</section>
   </div>
 
+  ${otvOffenKarte()}
   ${spielErgebnisse()}
   ${abrechnungsFormular()}
   <details class="karte abstand nur-kasse formular-klappe" id="buchung-klappe"><summary id="buchung-titel">Einzelne Buchung erfassen</summary>
@@ -795,7 +830,7 @@ function seiteKasse() {
       <thead><tr><th>Datum</th><th>Zweck</th><th>Bezahlt per</th><th class="betrag">Betrag</th><th class="betrag">Stand</th><th class="nur-kasse"></th></tr></thead>
       <tbody>${gefiltert.map((b) => `<tr>
         <td>${datumKurz(b.datum)}</td>
-        <td><strong>${esc(b.zweck)}</strong><div class="leise klein">${esc(b.kategorie)}${b.spielId && spielName(b.spielId) ? " · " + esc(spielName(b.spielId)) : ""}${b.beleg ? " · " + esc(b.beleg) : ""}</div></td>
+        <td><strong>${esc(b.zweck)}</strong>${b.offen ? ` <span class="pill offen">noch an OTV zu zahlen</span>` : ""}<div class="leise klein">${esc(b.kategorie)}${b.spielId && spielName(b.spielId) ? " · " + esc(spielName(b.spielId)) : ""}${b.beleg ? " · " + esc(b.beleg) : ""}</div></td>
         <td>${esc(b.kanal)}</td>
         <td class="betrag ${b.art === "einnahme" ? "plus" : "minus"}">${b.art === "einnahme" ? "+" : "−"} ${euro(b.betrag)}</td>
         <td class="betrag">${euro(b.saldo)}</td>
@@ -893,6 +928,9 @@ function seiteVerwaltung() {
       <textarea name="cateringArtikel" style="min-height:110px">${esc(e.cateringArtikel.map((a) => `${a.name} | ${a.bedarf} | ${a.hinweis || ""}${a.immer === false ? " | bei Bedarf" : ""}`).join("\n"))}</textarea>
       <label class="abstand">Vorrat (je Zeile: Artikel | Menge beim Nachkaufen)</label>
       <textarea name="vorratArtikel" style="min-height:90px">${esc((e.vorratArtikel || []).map((a) => `${a.name} | ${a.hinweis || ""}`).join("\n"))}</textarea>
+      <label class="abstand">Getränke vom OTV (je Zeile: Name | Preis), erscheinen in der Strichliste und in der Abrechnung</label>
+      <textarea name="getraenke" style="min-height:130px" placeholder="Cola | 2,50">${esc(getraenkeListe().map((g) => `${g.name} | ${(g.preis / 100).toFixed(2).replace(".", ",")}`).join("\n"))}</textarea>
+      <div class="feld" style="max-width:220px"><label>Anteil an den OTV (%)</label><input type="number" min="0" max="100" name="otvAnteilProzent" value="${e.otvAnteilProzent ?? 50}"></div>
       <label class="abstand">Wäsche, die nach jedem Heimspiel jemand mitnimmt (ein Teil pro Zeile, leer = aus)</label>
       <textarea name="waescheArtikel" style="min-height:60px">${esc((e.waescheArtikel || []).join("\n"))}</textarea>`)}
     ${gruppe("Zeitnehmer", `
@@ -1289,6 +1327,22 @@ function spielErgebnisse() {
   </section>`;
 }
 
+function otvOffenKarte() {
+  const offen = Z.kasse.filter((b) => b.offen).sort((a, b) => a.datum.localeCompare(b.datum));
+  const summe = offen.reduce((n, b) => n + b.betrag, 0);
+  const bezahlt = Z.kasse.filter((b) => b.kategorie === "Getränke OTV" && !b.offen);
+  if (!offen.length) return "";
+  return `<section class="karte abstand otv-offen">
+    <div class="karte-kopf"><h2 style="margin:0">Getränke: an den OTV zu zahlen</h2><span class="pill ${summe ? "offen" : "ok"}">${summe ? euro(summe) : "alles bezahlt"}</span></div>
+    <p class="leise klein">Der OTV-Anteil ist im Kassenstand schon abgezogen. Wird monatlich gesammelt bezahlt.</p>
+    ${offen.length ? `<ul class="liste">${offen.map((b) => `<li><span>${datumKurz(b.datum)} · ${esc(spielName(b.spielId) || b.zweck)}<div class="leise klein">${esc((b.getraenke || "").split(";").map((x) => x.replace("=", " × ")).join(", "))}</div></span><strong>${euro(b.betrag)}</strong></li>`).join("")}</ul>
+      ${istAdmin() ? `<form class="zeile abstand" data-form="otv-bezahlt">
+        <div class="feld" style="flex-basis:150px"><label>Bezahlt am</label><input type="date" name="datum" value="${heute()}" required></div>
+        <div class="feld" style="flex-basis:130px"><label>bezahlt per</label><select name="kanal">${Z.einstellungen.kassenKanaele.map((k) => `<option>${esc(k)}</option>`).join("")}</select></div>
+        <button class="knopf">Alle ${euro(summe)} als bezahlt markieren</button></form>` : ""}` : `<p class="gut klein">Alles an den OTV bezahlt.</p>`}
+  </section>`;
+}
+
 function abrechnungsFormular() {
   const e = Z.einstellungen;
   const liste = heimspiele();
@@ -1302,10 +1356,12 @@ function abrechnungsFormular() {
       </div>
       <h3 class="abstand">Einnahmen</h3>
       <div class="zeile">${e.kassenKanaele.map((k) => `<div class="feld" style="flex-basis:130px"><label>${esc(k)} (€)</label><input type="text" inputmode="decimal" name="ein:${esc(k)}" placeholder="0,00"></div>`).join("")}</div>
+      <h3 class="abstand">Getränke (verkaufte Stück)</h3>
+      <p class="leise klein">Aus der Strichliste des Standdienstes vorausgefüllt, bitte mit der Papierliste abgleichen. Der Verkauf ist im Bargeld oben schon enthalten. ${e.otvAnteilProzent ?? 50} % des Getränkeumsatzes gehen an den OTV und werden als „offen an den OTV“ gebucht.</p>
+      <div class="zeile getraenke-felder">${getraenkeListe().map((g) => `<div class="feld" style="flex-basis:120px"><label>${esc(g.name)} <span class="leise">${euro(g.preis)}</span></label><input type="number" min="0" step="1" inputmode="numeric" name="g:${esc(g.name)}" value="${(vorschlag && strichVon(vorschlag)[g.name]) || ""}" placeholder="0"></div>`).join("")}</div>
+      <p class="getraenke-ergebnis" id="getraenke-ergebnis"></p>
       <h3 class="abstand">Ausgaben</h3>
       <div class="zeile">
-        <div class="feld" style="flex-basis:150px"><label>Getränke OTV (€)</label><input type="text" inputmode="decimal" name="getraenke" placeholder="0,00"></div>
-        <div class="feld" style="flex-basis:130px"><label>bezahlt per</label><select name="getraenkeKanal">${opt(e.kassenKanaele, "Bar")}</select></div>
         <div class="feld" style="flex-basis:150px"><label>Einkauf Catering (€)</label><input type="text" inputmode="decimal" name="einkauf" placeholder="0,00"></div>
         <div class="feld" style="flex-basis:130px"><label>bezahlt per</label><select name="einkaufKanal">${opt(e.kassenKanaele, "Bar")}</select></div>
         <div class="feld" style="flex-basis:200px"><label>Beleg / Notiz</label><input type="text" name="beleg" maxlength="120" placeholder="optional"></div>
@@ -1613,6 +1669,8 @@ function zeigen() {
   const pfad = location.hash.replace(/^#\/?/, "").split("?")[0];
   const seite = SEITEN[pfad] || seiteStart;
   inhalt.innerHTML = seite();
+  const abr = inhalt.querySelector('form[data-form="abrechnung"]');
+  if (abr) abrechnungRechnen(abr);
   const nav = { catering: "spiele", fahrten: "spiele", termine: "infos" }[pfad] ?? pfad;
   document.querySelectorAll(".nav a, .unten-nav a").forEach((a) => a.classList.toggle("aktiv", a.getAttribute("href") === "#/" + nav));
   $("#unten-mehr").classList.toggle("aktiv", !["", "spiele", "infos", "kasse"].includes(nav));
@@ -1735,16 +1793,25 @@ inhalt.addEventListener("submit", async (ev) => {
           const c = inCent(w["ein:" + k] || "");
           if (c > 0) buchungen.push({ art: "einnahme", betrag: c, zweck, kategorie: "Heimspiel-Catering", kanal: k });
         }
-        const getr = inCent(w.getraenke || "");
-        if (getr > 0) buchungen.push({ art: "ausgabe", betrag: getr, zweck: `Getränke OTV, Heimspiel gegen ${spiel.gegner}`, kategorie: "Getränke OTV", kanal: w.getraenkeKanal });
+        const gz = {};
+        for (const g of getraenkeListe()) { const n = parseInt(w["g:" + g.name] || "0", 10); if (n > 0) gz[g.name] = n; }
+        const gr = getraenkeRechnung(gz);
+        if (gr.otv > 0) buchungen.push({ art: "ausgabe", betrag: gr.otv, offen: true, kanal: "",
+          getraenke: Object.entries(gz).map(([k, v]) => `${k}=${v}`).join(";"),
+          zweck: `Getränke OTV (${Z.einstellungen.otvAnteilProzent ?? 50} % von ${euro(gr.umsatz)}), Heimspiel gegen ${spiel.gegner}`, kategorie: "Getränke OTV" });
         const eink = inCent(w.einkauf || "");
         if (eink > 0) buchungen.push({ art: "ausgabe", betrag: eink, zweck: `Einkauf Catering, Heimspiel gegen ${spiel.gegner}`, kategorie: "Einkauf Catering", kanal: w.einkaufKanal });
-        if ([...Object.entries(w)].some(([k, v]) => /^(ein:|getraenke$|einkauf$)/.test(k) && v.trim() && !(inCent(v) > 0))) throw new Error("Bitte Beträge im Format 12,50 eingeben");
+        if ([...Object.entries(w)].some(([k, v]) => /^(ein:|einkauf$)/.test(k) && v.trim() && !(inCent(v) > 0))) throw new Error("Bitte Beträge im Format 12,50 eingeben");
         if (!buchungen.length) throw new Error("Bitte mindestens einen Betrag eintragen");
-        for (const b of buchungen) await api("POST", "/api/c/kasse", { ...b, datum: spiel.datum, spielId: spiel.id, beleg: w.beleg || "" });
+        for (const b of buchungen) await api("POST", "/api/c/kasse", { ...b, datum: spiel.datum, spielId: spiel.id, beleg: b.offen ? "" : (w.beleg || "") });
         await neuLaden(`${buchungen.length} Buchung${buchungen.length === 1 ? "" : "en"} gespeichert`);
         teilen(abrechnungsText(spiel.id));
         break;
+      }
+      case "otv-bezahlt": {
+        const offen = Z.kasse.filter((b) => b.offen);
+        for (const b of offen) await api("PUT", "/api/c/kasse/" + b.id, { offen: false, kanal: w.kanal, beleg: `an OTV bezahlt am ${datumKurz(w.datum)}` });
+        await neuLaden(`${offen.length} Posten als bezahlt markiert`); break;
       }
       case "kader":
         await api("POST", "/api/c/kader", w);
@@ -1779,6 +1846,8 @@ inhalt.addEventListener("submit", async (ev) => {
           standdienstInfo: w.standdienstInfo,
           liga: w.liga,
           teamText: w.teamText,
+          getraenke: zeilen(w.getraenke).map((z) => { const [name, preis] = z.split("|").map((x) => (x || "").trim()); return { name, preis: inCent(preis || "0") }; }).filter((g) => g.name && g.preis >= 0),
+          otvAnteilProzent: w.otvAnteilProzent,
           hallen: zeilen(w.hallen).map((z) => { const [name, ...rest] = z.split("|").map((x) => (x || "").trim()); return { name, adresse: rest.join(", ") }; }).filter((h) => h.name),
           trainingszeiten: zeilen(w.trainingszeiten).map((z) => { const [tag, zeit, halle] = z.split("|").map((x) => (x || "").trim()); return { tag, zeit, halle }; }),
           cateringArtikel: zeilen(w.cateringArtikel).map((z) => { const [name, bedarf, hinweis, modus] = z.split("|").map((x) => (x || "").trim()); return { name, bedarf: Math.max(1, parseInt(bedarf, 10) || 1), hinweis: hinweis || "", immer: !/bedarf/i.test(modus || "") }; }),
@@ -1917,6 +1986,12 @@ inhalt.addEventListener("click", async (ev) => {
       offeneSpiele.add(el.dataset.id);
       for (const id of ["spiel-", "mehr-", "anbieten-"]) { const d = document.getElementById(id + el.dataset.id); if (d) d.open = true; }
       document.getElementById("anbieten-" + el.dataset.id)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    } else if (a === "strich") {
+      el.disabled = true;
+      const r = await api("PUT", "/api/strich/" + el.dataset.spiel, { getraenk: el.dataset.getraenk, delta: Number(el.dataset.delta) });
+      Z.strichSummen = { ...(Z.strichSummen || {}), [el.dataset.spiel]: r.summen };
+      const y = window.scrollY; zeigen(); window.scrollTo(0, y);
+      const d = document.getElementById("strich-" + el.dataset.spiel); if (d) d.open = true;
     } else if (a === "spiele-filter") {
       spieleFilter = el.dataset.wert;
       if (location.hash !== "#/spiele") location.hash = "#/spiele"; else zeigen();
@@ -2000,8 +2075,27 @@ inhalt.addEventListener("toggle", (ev) => {
   if (d.open) menge.add(d.dataset.spiel); else menge.delete(d.dataset.spiel);
 }, true);
 
+function abrechnungRechnen(form) {
+  const z = {};
+  for (const g of getraenkeListe()) { const n = parseInt(form.elements["g:" + g.name]?.value || "0", 10); if (n > 0) z[g.name] = n; }
+  const r = getraenkeRechnung(z);
+  const ziel = form.querySelector("#getraenke-ergebnis");
+  if (ziel) ziel.innerHTML = r.stueck ? `<strong>${r.stueck} Getränke · Umsatz ${euro(r.umsatz)}</strong> · an den OTV: <strong>${euro(r.otv)}</strong>` : "";
+}
+inhalt.addEventListener("input", (ev) => {
+  const form = ev.target.closest?.('form[data-form="abrechnung"]');
+  if (form) abrechnungRechnen(form);
+});
+
 inhalt.addEventListener("change", async (ev) => {
   const el = ev.target;
+  const abr = el.closest?.('form[data-form="abrechnung"]');
+  if (abr && el.name === "spielId") {
+    const sp = Z.spiele.find((x) => x.id === el.value);
+    for (const g of getraenkeListe()) { const f = abr.elements["g:" + g.name]; if (f) f.value = (sp && strichVon(sp)[g.name]) || ""; }
+    abrechnungRechnen(abr);
+    return;
+  }
   try {
     if (el.dataset.aktion === "antwort-admin") {
       const id = `${el.dataset.termin}-${slug(el.dataset.familie)}`;
